@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Active Funnel — Click Tracker</title>
+<title>RevX Tracker</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M24 8v20l-12 24a4 4 0 003.6 5.6h32.8A4 4 0 0052 52L40 28V8' fill='none' stroke='%236366f1' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/><path d='M20 8h24' fill='none' stroke='%236366f1' stroke-width='4' stroke-linecap='round'/><ellipse cx='32' cy='46' rx='10' ry='4' fill='%236366f180'/><circle cx='30' cy='40' r='3' fill='%2322c55e80'/><circle cx='36' cy='44' r='2' fill='%23eab30880'/></svg>">
 <style>
   :root {
@@ -18,7 +18,12 @@
     --yellow: #eab308;
     --blue: #3b82f6;
     --orange: #f97316;
+    --sidebar-bg: #13151e;
+    --sidebar-width: 240px;
+    --sidebar-collapsed-width: 60px;
+    --topbar-height: 52px;
   }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -26,22 +31,249 @@
     color: var(--text);
     min-height: 100vh;
   }
-  .header {
-    padding: 24px 32px 16px;
+
+  /* ============================================================
+     SIDEBAR LAYOUT
+  ============================================================ */
+
+  /* Mobile topbar */
+  .topbar {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: var(--topbar-height);
+    background: var(--sidebar-bg);
+    border-bottom: 1px solid var(--border);
+    z-index: 300;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+  }
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 16px;
+    flex: 1;
+    color: var(--text);
+  }
+  .topbar-brand svg { flex-shrink: 0; }
+  .hamburger-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .hamburger-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+
+  /* Sidebar backdrop */
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 250;
+    backdrop-filter: blur(2px);
+  }
+  .sidebar-backdrop.show { display: block; }
+
+  /* Sidebar */
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: var(--sidebar-width);
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 300;
+    overflow: hidden;
+    transition: width 0.25s ease;
+  }
+  body.sidebar-collapsed .sidebar {
+    width: var(--sidebar-collapsed-width);
+  }
+
+  /* Sidebar header / brand */
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    height: 64px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    flex: 1;
+    min-width: 0;
+  }
+  .sidebar-brand-icon { flex-shrink: 0; }
+  .sidebar-brand-text {
+    transition: opacity 0.2s ease;
+    overflow: hidden;
+  }
+  body.sidebar-collapsed .sidebar-brand-text {
+    opacity: 0;
+    width: 0;
+    pointer-events: none;
+  }
+
+  .sidebar-toggle {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .sidebar-toggle:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+  .sidebar-toggle svg { transition: transform 0.25s ease; }
+  body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+
+  /* Nav items */
+  .sidebar-nav {
+    flex: 1;
+    padding: 8px 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .sidebar-nav::-webkit-scrollbar { width: 4px; }
+  .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+  .sidebar-nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+    border-left: 3px solid transparent;
+    user-select: none;
+    text-decoration: none;
+    position: relative;
+  }
+  .nav-item:hover {
+    color: var(--text);
+    background: rgba(255,255,255,0.04);
+  }
+  .nav-item.active {
+    color: var(--accent);
+    background: rgba(99,102,241,0.1);
+    border-left-color: var(--accent);
+  }
+  .nav-icon {
+    font-size: 17px;
+    flex-shrink: 0;
+    width: 24px;
+    text-align: center;
+    line-height: 1;
+  }
+  .nav-label { transition: opacity 0.15s ease; }
+  body.sidebar-collapsed .nav-label {
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  /* Collapsed tooltips */
+  body.sidebar-collapsed .nav-item[data-tooltip] { overflow: visible; }
+  body.sidebar-collapsed .nav-item[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: fixed;
+    left: calc(var(--sidebar-collapsed-width) + 10px);
+    background: var(--card);
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    z-index: 9999;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  }
+
+  .sidebar-footer {
+    border-top: 1px solid var(--border);
+    padding: 8px 0;
+    flex-shrink: 0;
+  }
+  .nav-item.logout { color: var(--muted); }
+  .nav-item.logout:hover { color: var(--red); background: rgba(239,68,68,0.06); }
+
+  /* Main content */
+  .main-content {
+    margin-left: var(--sidebar-width);
+    transition: margin-left 0.25s ease;
+    min-height: 100vh;
+  }
+  body.sidebar-collapsed .main-content {
+    margin-left: var(--sidebar-collapsed-width);
+  }
+
+  /* Content top bar */
+  .content-topbar {
+    padding: 14px 32px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 16px;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 50;
   }
-  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
-  .header h1 span { color: var(--accent); }
+  .content-topbar h1 {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+  }
+  .content-topbar h1 span { color: var(--accent); }
+
+  /* Section visibility */
+  .section-content { display: none; }
+  .section-content.active { display: block; }
+
+  /* ============================================================
+     CONTROLS
+  ============================================================ */
   .controls { display: flex; gap: 8px; align-items: center; }
   .controls select, .controls button {
     background: var(--card);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 8px 14px;
+    padding: 7px 13px;
     border-radius: 8px;
     font-size: 13px;
     cursor: pointer;
@@ -57,12 +289,15 @@
 
   .grid { padding: 0 32px 32px; }
 
-  /* Summary cards */
+  /* ============================================================
+     SUMMARY CARDS
+  ============================================================ */
   .summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 16px;
     margin-bottom: 24px;
+    padding-top: 24px;
   }
   .stat-card {
     background: var(--card);
@@ -85,7 +320,7 @@
   .stat-card .value.orange { color: var(--orange); }
   .stat-card .value.accent { color: var(--accent); }
 
-  /* Section titles */
+  /* Section headings */
   .section-title {
     font-size: 13px;
     font-weight: 600;
@@ -204,7 +439,7 @@
   .bar-label { font-size: 10px; color: var(--muted); margin-top: 6px; position: absolute; bottom: -22px; }
   .bar-value { font-size: 10px; color: var(--text); margin-bottom: 4px; font-weight: 600; }
 
-  /* Funnel visualization */
+  /* Funnel */
   .funnel-container {
     background: var(--card);
     border: 1px solid var(--border);
@@ -220,9 +455,7 @@
     font-weight: 600;
     margin-bottom: 20px;
   }
-  .funnel-step {
-    margin-bottom: 12px;
-  }
+  .funnel-step { margin-bottom: 12px; }
   .funnel-step-meta {
     display: flex;
     justify-content: space-between;
@@ -230,12 +463,7 @@
     margin-bottom: 6px;
     font-size: 13px;
   }
-  .funnel-step-name {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 600;
-  }
+  .funnel-step-name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
   .funnel-step-icon { font-size: 16px; }
   .funnel-step-stats { display: flex; gap: 16px; align-items: center; }
   .funnel-step-count { font-size: 18px; font-weight: 700; color: var(--text); }
@@ -247,17 +475,8 @@
     padding: 2px 8px;
     border-radius: 4px;
   }
-  .funnel-bar-track {
-    height: 8px;
-    background: rgba(255,255,255,0.05);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  .funnel-bar-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.6s ease;
-  }
+  .funnel-bar-track { height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; }
+  .funnel-bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
   .funnel-bar-fill.landing { background: var(--accent); }
   .funnel-bar-fill.presale { background: var(--orange); }
   .funnel-bar-fill.offer { background: var(--yellow); }
@@ -265,13 +484,9 @@
 
   /* Live visitor feed */
   .visitor-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-    transition: background 0.1s;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: background 0.1s;
   }
   .visitor-row:last-child { border-bottom: none; }
   .visitor-row:hover { background: rgba(99,102,241,0.08); }
@@ -293,10 +508,7 @@
   .path-meta { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: var(--muted); }
 
   /* Activity feed */
-  .activity-item {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 16px; border-bottom: 1px solid var(--border);
-  }
+  .activity-item { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
   .activity-item:last-child { border-bottom: none; }
   .activity-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .activity-dot.lead { background: var(--blue); }
@@ -351,37 +563,23 @@
     gap: 12px;
     margin-bottom: 24px;
   }
-  .modal-meta-item { }
   .modal-meta-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
   .modal-meta-value { font-size: 14px; font-weight: 600; }
   .timeline-section-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 12px;
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;
   }
   .timeline { position: relative; padding-left: 20px; }
   .timeline::before {
-    content: '';
-    position: absolute;
-    left: 6px;
-    top: 4px;
-    bottom: 4px;
-    width: 2px;
-    background: var(--border);
+    content: ''; position: absolute;
+    left: 6px; top: 4px; bottom: 4px;
+    width: 2px; background: var(--border);
   }
   .timeline-item { position: relative; margin-bottom: 12px; padding-left: 20px; }
   .timeline-dot {
-    position: absolute;
-    left: -17px;
-    top: 4px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--border);
-    border: 2px solid var(--card);
+    position: absolute; left: -17px; top: 4px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--border); border: 2px solid var(--card);
   }
   .timeline-dot.pageview { background: var(--accent); }
   .timeline-dot.scroll { background: var(--blue); }
@@ -399,53 +597,14 @@
   .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
   .loading { text-align: center; padding: 64px; color: var(--muted); }
 
-  @media (max-width: 768px) {
-    .header { padding: 16px; }
-    .grid { padding: 0 16px 16px; }
-    .panels { grid-template-columns: 1fr; }
-    .summary { grid-template-columns: repeat(2, 1fr); }
-  }
-
-  /* ---- Nav Tabs ---- */
-  .nav-tabs {
-    display: flex;
-    gap: 4px;
-    padding: 0 32px 0;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 24px;
-  }
-  .nav-tab {
-    padding: 10px 18px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--muted);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: color 0.15s, border-color 0.15s;
-    user-select: none;
-  }
-  .nav-tab:hover { color: var(--text); }
-  .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
-
-  /* ---- Campaign Management Styles ---- */
-  .cm-section { margin-bottom: 24px; }
-  .cm-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-  }
+  /* ============================================================
+     CAMPAIGN MANAGEMENT
+  ============================================================ */
+  .cm-section { margin-bottom: 24px; padding-top: 24px; }
+  .cm-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
   .btn {
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    transition: opacity 0.15s;
+    padding: 8px 16px; border-radius: 8px; font-size: 13px;
+    font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s;
   }
   .btn:hover { opacity: 0.85; }
   .btn-primary { background: var(--accent); color: #fff; }
@@ -454,32 +613,22 @@
   .btn-sm { padding: 4px 10px; font-size: 11px; }
 
   .weight-bar-wrap { display: flex; gap: 4px; align-items: center; }
-  .weight-bar {
-    height: 6px; border-radius: 3px; background: var(--accent); min-width: 4px;
-    transition: width 0.3s;
-  }
+  .weight-bar { height: 6px; border-radius: 3px; background: var(--accent); min-width: 4px; transition: width 0.3s; }
   .weight-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
 
-  /* Traffic split viz */
   .split-viz { display: flex; height: 10px; border-radius: 5px; overflow: hidden; gap: 2px; margin-top: 8px; }
   .split-seg { height: 100%; min-width: 6px; transition: flex 0.3s; }
   .split-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .split-legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
   .split-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-  /* Form inside modals */
   .form-group { margin-bottom: 16px; }
   .form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
   .form-group input, .form-group select, .form-group textarea {
-    width: 100%;
-    padding: 10px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 13px;
-    outline: none;
-    font-family: inherit;
+    width: 100%; padding: 10px 12px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 13px;
+    outline: none; font-family: inherit;
   }
   .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); }
   .form-group textarea { resize: vertical; min-height: 64px; }
@@ -490,162 +639,310 @@
   .modal-error { background: rgba(239,68,68,0.1); color: var(--red); padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; display: none; }
   .modal-error.show { display: block; }
 
-  /* Campaign detail inline panel */
   .campaign-detail {
     background: rgba(99,102,241,0.05);
     border: 1px solid rgba(99,102,241,0.2);
-    border-radius: 8px;
-    padding: 16px;
-    margin-top: 8px;
+    border-radius: 8px; padding: 16px; margin-top: 8px;
   }
+
   .buyer-assignment-row {
     display: flex; align-items: center; gap: 10px;
-    padding: 8px 0; border-bottom: 1px solid var(--border);
-    font-size: 13px;
+    padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px;
   }
   .buyer-assignment-row:last-child { border-bottom: none; }
   .brow-name { flex: 1; font-weight: 600; }
   .brow-weight { width: 60px; }
   .brow-pct { width: 40px; text-align: right; color: var(--muted); font-size: 11px; }
+
+  /* ============================================================
+     SETTINGS PLACEHOLDER
+  ============================================================ */
+  .settings-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    color: var(--muted);
+    text-align: center;
+    gap: 12px;
+    padding: 48px 32px;
+  }
+  .settings-placeholder .icon { font-size: 48px; margin-bottom: 8px; }
+  .settings-placeholder h2 { font-size: 20px; font-weight: 600; color: var(--text); }
+  .settings-placeholder p { font-size: 14px; max-width: 360px; line-height: 1.6; }
+
+  /* ============================================================
+     RESPONSIVE
+  ============================================================ */
+  @media (max-width: 768px) {
+    .topbar { display: flex; }
+    body { padding-top: var(--topbar-height); }
+
+    .sidebar {
+      top: var(--topbar-height);
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      width: var(--sidebar-width) !important;
+      z-index: 270;
+    }
+    .sidebar.mobile-open { transform: translateX(0); }
+    body.sidebar-collapsed .sidebar { width: var(--sidebar-width) !important; }
+
+    .main-content { margin-left: 0 !important; }
+    .content-topbar { padding: 10px 16px; }
+    .content-topbar h1 { font-size: 16px; }
+    .grid { padding: 0 16px 16px; }
+    .panels { grid-template-columns: 1fr; }
+    .summary { grid-template-columns: repeat(2, 1fr); }
+    .form-row { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1><span>●</span> Active Funnel Tracker</h1>
-  <div class="controls">
-    <div class="live-dot"></div>
-    <select id="daysPicker">
-      <option value="1">Today</option>
-      <option value="3">Last 3 days</option>
-      <option value="7" selected>Last 7 days</option>
-      <option value="14">Last 14 days</option>
-      <option value="30">Last 30 days</option>
-    </select>
-    <button onclick="loadData()">⟳ Refresh</button>
-    <a href="/logout" style="text-decoration:none"><button>Sign Out</button></a>
+<!-- ============================================================
+     MOBILE TOP BAR
+============================================================ -->
+<div class="topbar">
+  <button class="hamburger-btn" onclick="toggleMobileSidebar()" aria-label="Open menu">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <rect x="2" y="4" width="16" height="2" rx="1" fill="currentColor"/>
+      <rect x="2" y="9" width="16" height="2" rx="1" fill="currentColor"/>
+      <rect x="2" y="14" width="16" height="2" rx="1" fill="currentColor"/>
+    </svg>
+  </button>
+  <div class="topbar-brand">
+    <svg width="22" height="22" viewBox="0 0 64 64" fill="none">
+      <path d="M24 8v20l-12 24a4 4 0 003.6 5.6h32.8A4 4 0 0052 52L40 28V8" stroke="#6366f1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M20 8h24" stroke="#6366f1" stroke-width="4" stroke-linecap="round"/>
+      <ellipse cx="32" cy="46" rx="10" ry="4" fill="#6366f180"/>
+      <circle cx="30" cy="40" r="3" fill="#22c55e80"/>
+      <circle cx="36" cy="44" r="2" fill="#eab30880"/>
+    </svg>
+    <span>RevX</span>
   </div>
 </div>
 
-<!-- Nav Tabs -->
-<div class="nav-tabs">
-  <div class="nav-tab active" onclick="switchTab('overview', this)">📊 Overview</div>
-  <div class="nav-tab" onclick="switchTab('campaigns', this)">🎯 Campaigns</div>
-  <div class="nav-tab" onclick="switchTab('buyers', this)">💼 Buyers</div>
+<!-- Mobile sidebar backdrop -->
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileSidebar()"></div>
+
+<!-- ============================================================
+     SIDEBAR
+============================================================ -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-brand">
+      <span class="sidebar-brand-icon">
+        <svg width="26" height="26" viewBox="0 0 64 64" fill="none">
+          <path d="M24 8v20l-12 24a4 4 0 003.6 5.6h32.8A4 4 0 0052 52L40 28V8" stroke="#6366f1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M20 8h24" stroke="#6366f1" stroke-width="4" stroke-linecap="round"/>
+          <ellipse cx="32" cy="46" rx="10" ry="4" fill="#6366f180"/>
+          <circle cx="30" cy="40" r="3" fill="#22c55e80"/>
+          <circle cx="36" cy="44" r="2" fill="#eab30880"/>
+        </svg>
+      </span>
+      <span class="sidebar-brand-text">RevX</span>
+    </div>
+    <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
+      <!-- Chevron left -->
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-item active" data-section="overview" data-tooltip="Overview" onclick="switchSection('overview', this)">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">Overview</span>
+    </div>
+    <div class="nav-item" data-section="funnel" data-tooltip="Funnel" onclick="switchSection('funnel', this)">
+      <span class="nav-icon">🔄</span>
+      <span class="nav-label">Funnel</span>
+    </div>
+    <div class="nav-item" data-section="campaigns" data-tooltip="Campaigns" onclick="switchSection('campaigns', this)">
+      <span class="nav-icon">📋</span>
+      <span class="nav-label">Campaigns</span>
+    </div>
+    <div class="nav-item" data-section="buyers" data-tooltip="Buyers" onclick="switchSection('buyers', this)">
+      <span class="nav-icon">👥</span>
+      <span class="nav-label">Buyers</span>
+    </div>
+    <div class="nav-item" data-section="activity" data-tooltip="Activity" onclick="switchSection('activity', this)">
+      <span class="nav-icon">📡</span>
+      <span class="nav-label">Activity</span>
+    </div>
+    <div class="nav-item" data-section="settings" data-tooltip="Settings" onclick="switchSection('settings', this)">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Settings</span>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <a href="/logout" class="nav-item logout" data-tooltip="Logout">
+      <span class="nav-icon">🔓</span>
+      <span class="nav-label">Logout</span>
+    </a>
+  </div>
 </div>
 
-<!-- ===================== OVERVIEW TAB ===================== -->
-<div id="tab-overview" class="tab-content active">
-<div class="grid">
+<!-- ============================================================
+     MAIN CONTENT
+============================================================ -->
+<div class="main-content" id="mainContent">
 
-  <!-- Summary Stats -->
-  <div class="summary" id="summary"></div>
-
-  <!-- Daily Revenue Chart -->
-  <div class="chart-container">
-    <div class="chart-header">Daily Revenue</div>
-    <div id="chart" class="bar-chart"></div>
-  </div>
-
-  <!-- Funnel Visualization -->
-  <div class="funnel-container">
-    <div class="funnel-header">
-      <span>Funnel Overview</span>
-      <span id="funnelPeriod" style="font-size:12px;color:var(--muted);font-weight:400"></span>
-    </div>
-    <div id="funnelViz"><div class="loading">Loading funnel…</div></div>
-  </div>
-
-  <!-- Revenue breakdown panels -->
-  <div class="panels">
-    <div class="panel">
-      <div class="panel-header">Revenue by Source</div>
-      <div id="sourceTable"></div>
-    </div>
-    <div class="panel">
-      <div class="panel-header">Top States</div>
-      <div id="stateTable"></div>
+  <!-- Persistent top bar: title + controls -->
+  <div class="content-topbar">
+    <h1 id="contentTitle"><span>●</span> Overview</h1>
+    <div class="controls">
+      <div class="live-dot"></div>
+      <select id="daysPicker">
+        <option value="1">Today</option>
+        <option value="3">Last 3 days</option>
+        <option value="7" selected>Last 7 days</option>
+        <option value="14">Last 14 days</option>
+        <option value="30">Last 30 days</option>
+      </select>
+      <button onclick="loadData()">⟳ Refresh</button>
     </div>
   </div>
 
-  <div class="panels">
-    <div class="panel">
-      <div class="panel-header">RPL by Campaign</div>
-      <div id="campaignTable"></div>
-    </div>
-    <div class="panel">
-      <div class="panel-header">Recent Activity</div>
-      <div id="activityFeed"></div>
-    </div>
-  </div>
+  <!-- ===================== OVERVIEW SECTION ===================== -->
+  <div id="section-overview" class="section-content active">
+    <div class="grid">
+      <!-- Summary Stats -->
+      <div class="summary" id="summary"></div>
 
-  <!-- Funnel / Visitor panels -->
-  <div class="panels">
-    <div class="panel">
-      <div class="panel-header">
-        Live Visitors
-        <span class="badge" id="visitorCount">0</span>
+      <!-- Daily Revenue Chart -->
+      <div class="chart-container">
+        <div class="chart-header">Daily Revenue</div>
+        <div id="chart" class="bar-chart"></div>
       </div>
-      <div id="visitorFeed"></div>
+
+      <!-- Revenue breakdown panels -->
+      <div class="panels">
+        <div class="panel">
+          <div class="panel-header">Revenue by Source</div>
+          <div id="sourceTable"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Top States</div>
+          <div id="stateTable"></div>
+        </div>
+      </div>
+
+      <div class="panels">
+        <div class="panel">
+          <div class="panel-header">RPL by Campaign</div>
+          <div id="campaignTable"></div>
+        </div>
+      </div>
     </div>
-    <div class="panel">
-      <div class="panel-header">Conversion Paths</div>
-      <div id="pathsList"></div>
+  </div><!-- /section-overview -->
+
+  <!-- ===================== FUNNEL SECTION ===================== -->
+  <div id="section-funnel" class="section-content">
+    <div class="grid">
+
+      <!-- Funnel Visualization -->
+      <div class="funnel-container" style="margin-top:24px">
+        <div class="funnel-header">
+          <span>Funnel Overview</span>
+          <span id="funnelPeriod" style="font-size:12px;color:var(--muted);font-weight:400"></span>
+        </div>
+        <div id="funnelViz"><div class="loading">Loading funnel…</div></div>
+      </div>
+
+      <!-- Visitor / Paths panels -->
+      <div class="panels">
+        <div class="panel">
+          <div class="panel-header">
+            Live Visitors
+            <span class="badge" id="visitorCount">0</span>
+          </div>
+          <div id="visitorFeed"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Conversion Paths</div>
+          <div id="pathsList"></div>
+        </div>
+      </div>
+
     </div>
-  </div>
+  </div><!-- /section-funnel -->
 
-</div>
+  <!-- ===================== CAMPAIGNS SECTION ===================== -->
+  <div id="section-campaigns" class="section-content">
+    <div class="grid">
 
-</div><!-- /grid -->
-</div><!-- /tab-overview -->
+      <div class="cm-section">
+        <div class="cm-header">
+          <div class="section-title" style="margin:0">Campaigns</div>
+          <button class="btn btn-primary" onclick="openNewCampaignModal()">+ New Campaign</button>
+        </div>
+        <div class="panel">
+          <div id="campaignList"><div class="loading">Loading campaigns…</div></div>
+        </div>
+      </div>
 
-<!-- ===================== CAMPAIGNS TAB ===================== -->
-<div id="tab-campaigns" class="tab-content">
-<div class="grid">
+      <!-- Per-Campaign Buyer Report -->
+      <div class="cm-section" id="campaignReportSection" style="display:none">
+        <div class="cm-header">
+          <div class="section-title" style="margin:0" id="campaignReportTitle">Campaign Report</div>
+          <button class="btn btn-ghost btn-sm" onclick="$('campaignReportSection').style.display='none'">✕ Close</button>
+        </div>
+        <div class="panel">
+          <div id="campaignReportBody"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
 
-  <!-- Campaign List -->
-  <div class="cm-section">
-    <div class="cm-header">
-      <div class="section-title" style="margin:0">Campaigns</div>
-      <button class="btn btn-primary" onclick="openNewCampaignModal()">+ New Campaign</button>
     </div>
-    <div class="panel">
-      <div id="campaignList"><div class="loading">Loading campaigns…</div></div>
+  </div><!-- /section-campaigns -->
+
+  <!-- ===================== BUYERS SECTION ===================== -->
+  <div id="section-buyers" class="section-content">
+    <div class="grid">
+
+      <div class="cm-section">
+        <div class="cm-header">
+          <div class="section-title" style="margin:0">Buyers</div>
+          <button class="btn btn-primary" onclick="openNewBuyerModal()">+ New Buyer</button>
+        </div>
+        <div class="panel">
+          <div id="buyerList"><div class="loading">Loading buyers…</div></div>
+        </div>
+      </div>
+
     </div>
-  </div>
+  </div><!-- /section-buyers -->
 
-  <!-- Per-Campaign Buyer Report -->
-  <div class="cm-section" id="campaignReportSection" style="display:none">
-    <div class="cm-header">
-      <div class="section-title" style="margin:0" id="campaignReportTitle">Campaign Report</div>
-      <button class="btn btn-ghost btn-sm" onclick="$('campaignReportSection').style.display='none'">✕ Close</button>
+  <!-- ===================== ACTIVITY SECTION ===================== -->
+  <div id="section-activity" class="section-content">
+    <div class="grid">
+      <div style="padding-top:24px">
+        <div class="panel">
+          <div class="panel-header">Recent Activity</div>
+          <div id="activityFeed"><div class="loading">Loading activity…</div></div>
+        </div>
+      </div>
     </div>
-    <div class="panel">
-      <div id="campaignReportBody"><div class="loading">Loading…</div></div>
+  </div><!-- /section-activity -->
+
+  <!-- ===================== SETTINGS SECTION ===================== -->
+  <div id="section-settings" class="section-content">
+    <div class="settings-placeholder">
+      <div class="icon">⚙️</div>
+      <h2>Settings</h2>
+      <p>Settings and configuration options will appear here in a future update.</p>
     </div>
-  </div>
+  </div><!-- /section-settings -->
 
-</div>
-</div><!-- /tab-campaigns -->
+</div><!-- /main-content -->
 
-<!-- ===================== BUYERS TAB ===================== -->
-<div id="tab-buyers" class="tab-content">
-<div class="grid">
-
-  <div class="cm-section">
-    <div class="cm-header">
-      <div class="section-title" style="margin:0">Buyers</div>
-      <button class="btn btn-primary" onclick="openNewBuyerModal()">+ New Buyer</button>
-    </div>
-    <div class="panel">
-      <div id="buyerList"><div class="loading">Loading buyers…</div></div>
-    </div>
-  </div>
-
-</div>
-</div><!-- /tab-buyers -->
-
-<!-- ===================== MODALS ===================== -->
+<!-- ============================================================
+     MODALS
+============================================================ -->
 
 <!-- Create/Edit Campaign Modal -->
 <div class="modal-overlay" id="campaignModal">
@@ -769,7 +1066,7 @@
   <div class="modal">
     <div class="modal-header">
       <h2 id="modalTitle">Visitor Journey</h2>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="modal-close" onclick="closeModal('visitorModal')">✕</button>
     </div>
     <div class="modal-body" id="modalBody">
       <div class="loading">Loading…</div>
@@ -845,7 +1142,9 @@ function escapeHTML(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ================================================================
 // ---- Main Data Load ----
+// ================================================================
 async function loadData() {
   const days = $('daysPicker').value;
   try {
@@ -872,7 +1171,9 @@ async function loadData() {
   }
 }
 
+// ----------------------------------------------------------------
 // ---- Summary Cards ----
+// ----------------------------------------------------------------
 function renderSummary(report) {
   const s = report.summary || {};
   const totalClicks = parseInt(s.total_clicks) || 0;
@@ -917,7 +1218,9 @@ function renderSummary(report) {
   `;
 }
 
+// ----------------------------------------------------------------
 // ---- Daily Revenue Chart ----
+// ----------------------------------------------------------------
 function renderChart(daily) {
   if (!daily || daily.length === 0) {
     $('chart').innerHTML = emptyHTML('No data yet — postbacks will show here');
@@ -938,7 +1241,9 @@ function renderChart(daily) {
   }).join('');
 }
 
+// ----------------------------------------------------------------
 // ---- Funnel Visualization ----
+// ----------------------------------------------------------------
 function renderFunnel(data) {
   const steps = data.steps || [];
   $('funnelPeriod').textContent = data.period || '';
@@ -984,7 +1289,9 @@ function renderFunnel(data) {
   }).join('');
 }
 
+// ----------------------------------------------------------------
 // ---- Source Table ----
+// ----------------------------------------------------------------
 function renderSourceTable(sources) {
   if (!sources || sources.length === 0) {
     $('sourceTable').innerHTML = emptyHTML('No source data');
@@ -1001,7 +1308,9 @@ function renderSourceTable(sources) {
   </table>`;
 }
 
+// ----------------------------------------------------------------
 // ---- State Table ----
+// ----------------------------------------------------------------
 function renderStateTable(states) {
   if (!states || states.length === 0) {
     $('stateTable').innerHTML = emptyHTML('No state data');
@@ -1018,7 +1327,9 @@ function renderStateTable(states) {
   </table>`;
 }
 
-// ---- Campaign Table ----
+// ----------------------------------------------------------------
+// ---- Campaign Table (overview) ----
+// ----------------------------------------------------------------
 function renderCampaignTable(campaigns) {
   if (!campaigns || campaigns.length === 0) {
     $('campaignTable').innerHTML = emptyHTML('No campaign data');
@@ -1035,7 +1346,9 @@ function renderCampaignTable(campaigns) {
   </table>`;
 }
 
+// ----------------------------------------------------------------
 // ---- Activity Feed ----
+// ----------------------------------------------------------------
 function renderActivity(items) {
   if (!items || items.length === 0) {
     $('activityFeed').innerHTML = emptyHTML('No recent activity');
@@ -1055,7 +1368,9 @@ function renderActivity(items) {
   `).join('');
 }
 
+// ----------------------------------------------------------------
 // ---- Live Visitor Feed ----
+// ----------------------------------------------------------------
 function renderVisitors(visitors) {
   const list = Array.isArray(visitors) ? visitors : [];
   $('visitorCount').textContent = list.length;
@@ -1084,7 +1399,9 @@ function renderVisitors(visitors) {
   }).join('');
 }
 
+// ----------------------------------------------------------------
 // ---- Conversion Paths ----
+// ----------------------------------------------------------------
 function renderPaths(data) {
   const paths = (data && data.paths) || [];
 
@@ -1111,7 +1428,9 @@ function renderPaths(data) {
   }).join('');
 }
 
+// ----------------------------------------------------------------
 // ---- Visitor Detail Modal ----
+// ----------------------------------------------------------------
 function openVisitorModal(visitorId) {
   $('visitorModal').classList.add('open');
   $('modalTitle').textContent = 'Visitor · ' + visitorId.slice(0, 8) + '…';
@@ -1125,18 +1444,16 @@ function openVisitorModal(visitorId) {
     });
 }
 
-function closeModal() {
-  $('visitorModal').classList.remove('open');
-}
-
-// Close modal on overlay click
+// Close visitor modal on overlay click
 $('visitorModal').addEventListener('click', function(e) {
-  if (e.target === this) closeModal();
+  if (e.target === this) closeModal('visitorModal');
 });
 
-// Close modal on Escape key
+// Close modal on Escape
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  }
 });
 
 function renderVisitorModal(data) {
@@ -1187,7 +1504,6 @@ function renderVisitorModal(data) {
   // Build merged timeline
   const timelineItems = [];
 
-  // Add funnel steps
   steps.forEach(s => {
     timelineItems.push({
       ts: new Date(s.entered_at).getTime(),
@@ -1198,7 +1514,6 @@ function renderVisitorModal(data) {
     });
   });
 
-  // Add conversions
   conversions.forEach(c => {
     timelineItems.push({
       ts: new Date(c.created_at).getTime(),
@@ -1209,7 +1524,6 @@ function renderVisitorModal(data) {
     });
   });
 
-  // Add page events (limit to 100 most recent for display)
   const displayEvents = events.slice(-100);
   displayEvents.forEach(e => {
     const meta = e.metadata ? (typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata) : {};
@@ -1221,19 +1535,15 @@ function renderVisitorModal(data) {
       detail = escapeHTML((e.page_url || '').replace(/^https?:\/\/[^/]+/, '').slice(0, 80));
     } else if (e.event_type === 'scroll') {
       label = '📜 Scrolled ' + (meta.depth || '?') + '%';
-      detail = '';
     } else if (e.event_type === 'time_on_page') {
       label = '⏱ Time on page: ' + fmtTime(meta.duration_ms);
-      detail = '';
     } else if (e.event_type === 'cta_click') {
       label = '🖱 CTA Click';
       detail = escapeHTML((meta.destination || '').slice(0, 80));
     } else if (e.event_type === 'form_start') {
       label = '📝 Form started';
-      detail = '';
     } else if (e.event_type === 'form_submit') {
       label = '✅ Form submitted';
-      detail = '';
     } else {
       label = escapeHTML(e.event_type || 'event');
     }
@@ -1241,13 +1551,11 @@ function renderVisitorModal(data) {
     timelineItems.push({
       ts: new Date(e.created_at).getTime(),
       type: e.event_type,
-      label,
-      detail,
+      label, detail,
       time: e.created_at,
     });
   });
 
-  // Sort by timestamp
   timelineItems.sort((a, b) => a.ts - b.ts);
 
   const timelineHTML = timelineItems.length > 0
@@ -1268,36 +1576,111 @@ function renderVisitorModal(data) {
     timelineHTML;
 }
 
-// Init
-$('daysPicker').addEventListener('change', loadData);
-loadData();
-
-// Auto-refresh every 30s
-autoRefresh = setInterval(loadData, 30000);
-
 // ================================================================
-// ---- Tab Navigation ----
+// ---- Sidebar Navigation ----
 // ================================================================
-function switchTab(name, el) {
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  $('tab-' + name).classList.add('active');
+
+const SECTION_TITLES = {
+  overview:  '● Overview',
+  funnel:    '🔄 Funnel',
+  campaigns: '📋 Campaigns',
+  buyers:    '👥 Buyers',
+  activity:  '📡 Activity',
+  settings:  '⚙️ Settings',
+};
+
+function switchSection(name, el) {
+  // Update sidebar nav items
+  document.querySelectorAll('.nav-item[data-section]').forEach(t => t.classList.remove('active'));
+  // Update section visibility
+  document.querySelectorAll('.section-content').forEach(t => t.classList.remove('active'));
+
+  // Activate the clicked nav item
+  if (el) el.classList.add('active');
+  // If called programmatically without element, find it
+  if (!el) {
+    const found = document.querySelector('.nav-item[data-section="' + name + '"]');
+    if (found) found.classList.add('active');
+  }
+
+  const section = $('section-' + name);
+  if (section) section.classList.add('active');
+
+  // Update content title
+  const titleEl = $('contentTitle');
+  if (titleEl) {
+    const raw = SECTION_TITLES[name] || name;
+    // Wrap first char as accent span for overview, plain for others
+    if (name === 'overview') {
+      titleEl.innerHTML = '<span>●</span> Overview';
+    } else {
+      titleEl.textContent = raw;
+    }
+  }
+
+  // Load section-specific data
   if (name === 'campaigns') loadCampaigns();
   if (name === 'buyers') loadBuyers();
+
+  // Auto-close mobile sidebar
+  closeMobileSidebar();
 }
+
+function toggleSidebar() {
+  const collapsed = document.body.classList.toggle('sidebar-collapsed');
+  try { localStorage.setItem('revx-sidebar-collapsed', collapsed ? '1' : '0'); } catch(e) {}
+}
+
+function toggleMobileSidebar() {
+  const sidebar = $('sidebar');
+  const backdrop = $('sidebarBackdrop');
+  if (!sidebar) return;
+  const isOpen = sidebar.classList.toggle('mobile-open');
+  if (backdrop) backdrop.classList.toggle('show', isOpen);
+}
+
+function closeMobileSidebar() {
+  const sidebar = $('sidebar');
+  const backdrop = $('sidebarBackdrop');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (backdrop) backdrop.classList.remove('show');
+}
+
+// Restore sidebar collapsed state from localStorage
+(function() {
+  try {
+    if (localStorage.getItem('revx-sidebar-collapsed') === '1') {
+      document.body.classList.add('sidebar-collapsed');
+    }
+  } catch(e) {}
+})();
 
 // ================================================================
 // ---- Modal Helpers ----
 // ================================================================
-function openModal(id) { $(id).classList.add('open'); }
-function closeModal(id) { $(id).classList.remove('open'); }
+function openModal(id) {
+  const el = $(id);
+  if (el) el.classList.add('open');
+}
 
+function closeModal(id) {
+  // Handle both closeModal('id') and legacy closeModal() (visitor modal)
+  const targetId = id || 'visitorModal';
+  const el = $(targetId);
+  if (el) el.classList.remove('open');
+}
+
+// Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
   overlay.addEventListener('click', function(e) {
     if (e.target === overlay) overlay.classList.remove('open');
   });
 });
+
+// ================================================================
+// ---- Days picker change -> reload ----
+// ================================================================
+$('daysPicker').addEventListener('change', loadData);
 
 // ================================================================
 // ---- Buyer Color Palette ----
@@ -1407,7 +1790,7 @@ async function saveBuyer() {
     closeModal('buyerModal');
     loadBuyers();
     // Refresh campaign list if visible
-    if ($('tab-campaigns').classList.contains('active')) loadCampaigns();
+    if ($('section-campaigns').classList.contains('active')) loadCampaigns();
   } catch(err) {
     errEl.textContent = 'Network error';
     errEl.classList.add('show');
@@ -1445,15 +1828,14 @@ function renderCampaigns(campaigns) {
     const totalWeight = buyers.filter(b => b.active).reduce((s, b) => s + (b.weight || 100), 0);
     const stats = c.stats || {};
 
-    // Traffic split viz
     const splitHTML = buyers.filter(b => b.active).map((b, i) => {
-      const pct = totalWeight > 0 ? Math.round(((b.weight || 100) / totalWeight) * 100) : 0;
-      return `<div class="split-seg" style="flex:${b.weight||100};background:${buyerColor(i)}" title="${escapeHTML(b.buyer_name||b.buyer_slug)}: ${pct}%"></div>`;
+      const p = totalWeight > 0 ? Math.round(((b.weight || 100) / totalWeight) * 100) : 0;
+      return `<div class="split-seg" style="flex:${b.weight||100};background:${buyerColor(i)}" title="${escapeHTML(b.buyer_name||b.buyer_slug)}: ${p}%"></div>`;
     }).join('');
 
     const legendHTML = buyers.filter(b => b.active).map((b, i) => {
-      const pct = totalWeight > 0 ? Math.round(((b.weight || 100) / totalWeight) * 100) : 0;
-      return `<span class="split-legend-item"><span class="split-legend-dot" style="background:${buyerColor(i)}"></span>${escapeHTML(b.buyer_name||b.buyer_slug)} ${pct}%</span>`;
+      const p = totalWeight > 0 ? Math.round(((b.weight || 100) / totalWeight) * 100) : 0;
+      return `<span class="split-legend-item"><span class="split-legend-dot" style="background:${buyerColor(i)}"></span>${escapeHTML(b.buyer_name||b.buyer_slug)} ${p}%</span>`;
     }).join('');
 
     const statusTag = c.active
@@ -1569,7 +1951,6 @@ async function openAssignBuyer(campaignId, campaignName) {
   $('assignUrlOverride').value = '';
   $('assignBuyerError').classList.remove('show');
 
-  // Load buyers into select
   if (allBuyers.length === 0) await loadBuyers();
   $('assignBuyerSelect').innerHTML = allBuyers
     .filter(b => b.active)
@@ -1676,7 +2057,11 @@ async function viewCampaignReport(campaignId, campaignName) {
   }
 }
 
-// (Campaign management JS complete — no duplicate init needed)
+// ================================================================
+// ---- Init ----
+// ================================================================
+loadData();
+autoRefresh = setInterval(loadData, 30000);
 </script>
 </body>
 </html>
