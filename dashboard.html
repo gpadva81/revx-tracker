@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Active Funnel — Click Tracker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M24 8v20l-12 24a4 4 0 003.6 5.6h32.8A4 4 0 0052 52L40 28V8' fill='none' stroke='%236366f1' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/><path d='M20 8h24' fill='none' stroke='%236366f1' stroke-width='4' stroke-linecap='round'/><ellipse cx='32' cy='46' rx='10' ry='4' fill='%236366f180'/><circle cx='30' cy='40' r='3' fill='%2322c55e80'/><circle cx='36' cy='44' r='2' fill='%23eab30880'/></svg>">
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e4e4e7;
+    --muted: #8b8d97;
+    --accent: #6366f1;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --blue: #3b82f6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .header {
+    padding: 24px 32px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .header h1 span { color: var(--accent); }
+  .controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .controls select, .controls button {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .controls button:hover { border-color: var(--accent); }
+  .controls .live-dot {
+    width: 8px; height: 8px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .grid { padding: 0 32px 32px; }
+
+  /* Summary cards */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .stat-card .label {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .stat-card .value {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -1px;
+  }
+  .stat-card .sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .stat-card .value.green { color: var(--green); }
+  .stat-card .value.blue { color: var(--blue); }
+  .stat-card .value.yellow { color: var(--yellow); }
+
+  /* Tables */
+  .panels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 16px 20px 12px;
+    font-size: 14px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th {
+    text-align: left;
+    padding: 10px 16px;
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover { background: rgba(99,102,241,0.05); }
+  .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+  .right { text-align: right; }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .tag-lead { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .tag-call { background: rgba(34,197,94,0.15); color: var(--green); }
+  .tag-click { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .tag-unknown { background: rgba(139,141,151,0.15); color: var(--muted); }
+  .tag-meta { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .tag-youtube { background: rgba(239,68,68,0.15); color: var(--red); }
+  .tag-search { background: rgba(34,197,94,0.15); color: var(--green); }
+
+  /* Daily chart (simple bar chart) */
+  .chart-container {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .chart-header {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 160px;
+    padding-bottom: 24px;
+    position: relative;
+  }
+  .bar-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    justify-content: flex-end;
+    position: relative;
+  }
+  .bar {
+    width: 100%;
+    max-width: 40px;
+    background: var(--accent);
+    border-radius: 4px 4px 0 0;
+    min-height: 2px;
+    position: relative;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .bar:hover { opacity: 0.8; }
+  .bar-label {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 6px;
+    position: absolute;
+    bottom: -22px;
+  }
+  .bar-value {
+    font-size: 10px;
+    color: var(--text);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--muted);
+  }
+  .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+
+  /* Activity feed */
+  .activity-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .activity-item:last-child { border-bottom: none; }
+  .activity-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .activity-dot.lead { background: var(--blue); }
+  .activity-dot.call { background: var(--green); }
+  .activity-dot.click_event { background: var(--yellow); }
+  .activity-dot.unknown { background: var(--muted); }
+  .activity-text { flex: 1; font-size: 13px; }
+  .activity-time { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .activity-amount { font-weight: 700; font-size: 13px; }
+
+  .loading { text-align: center; padding: 64px; color: var(--muted); }
+
+  @media (max-width: 768px) {
+    .header { padding: 16px; }
+    .grid { padding: 0 16px 16px; }
+    .panels { grid-template-columns: 1fr; }
+    .summary { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>●</span> Active Funnel Tracker</h1>
+  <div class="controls">
+    <div class="live-dot"></div>
+    <select id="daysPicker">
+      <option value="1">Today</option>
+      <option value="3">Last 3 days</option>
+      <option value="7" selected>Last 7 days</option>
+      <option value="14">Last 14 days</option>
+      <option value="30">Last 30 days</option>
+    </select>
+    <button onclick="loadData()">⟳ Refresh</button>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="summary" id="summary"></div>
+  <div class="chart-container">
+    <div class="chart-header">Daily Revenue</div>
+    <div id="chart" class="bar-chart"></div>
+  </div>
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-header">Revenue by Source</div>
+      <div id="sourceTable"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">Top States</div>
+      <div id="stateTable"></div>
+    </div>
+  </div>
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-header">RPL by Campaign</div>
+      <div id="campaignTable"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">Recent Activity</div>
+      <div id="activityFeed"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let autoRefresh;
+
+function $(id) { return document.getElementById(id); }
+
+function fmt(n) {
+  const v = parseFloat(n) || 0;
+  return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function num(n) {
+  return (parseInt(n) || 0).toLocaleString();
+}
+
+function timeAgo(dateStr) {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60) return diff + 's ago';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
+
+function shortDate(dateStr) {
+  const d = new Date(dateStr);
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+function tagHTML(type) {
+  const cls = 'tag-' + (type || 'unknown');
+  return '<span class="tag ' + cls + '">' + (type || 'unknown') + '</span>';
+}
+
+function emptyHTML(msg) {
+  return '<div class="empty-state"><div class="icon">📊</div><div>' + msg + '</div></div>';
+}
+
+async function loadData() {
+  const days = $('daysPicker').value;
+  try {
+    const [report, activity] = await Promise.all([
+      fetch(API + '/api/report?days=' + days).then(r => r.json()),
+      fetch(API + '/api/activity?days=' + days + '&limit=20').then(r => r.json()).catch(() => []),
+    ]);
+
+    renderSummary(report);
+    renderChart(report.daily);
+    renderSourceTable(report.by_source);
+    renderStateTable(report.by_state);
+    renderCampaignTable(report.by_campaign);
+    renderActivity(activity);
+  } catch (err) {
+    console.error('Load failed:', err);
+    $('summary').innerHTML = emptyHTML('Failed to load data. Is the tracker running?');
+  }
+}
+
+function renderSummary(report) {
+  const s = report.summary || {};
+  const totalClicks = parseInt(s.total_clicks) || 0;
+  const totalEvents = parseInt(s.total_events) || 0;
+  const totalRevenue = parseFloat(s.total_revenue) || 0;
+  const rpl = totalClicks > 0 ? totalRevenue / totalClicks : 0;
+
+  $('summary').innerHTML = `
+    <div class="stat-card">
+      <div class="label">Total Revenue</div>
+      <div class="value green">${fmt(totalRevenue)}</div>
+      <div class="sub">${num(totalEvents)} events</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Unique Clicks</div>
+      <div class="value blue">${num(totalClicks)}</div>
+      <div class="sub">with conversions</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">RPL</div>
+      <div class="value yellow">${fmt(rpl)}</div>
+      <div class="sub">revenue per lead</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Calls</div>
+      <div class="value">${num(report.daily.reduce((sum, d) => sum + parseInt(d.calls || 0), 0))}</div>
+      <div class="sub">transfer events</div>
+    </div>
+  `;
+}
+
+function renderChart(daily) {
+  if (!daily || daily.length === 0) {
+    $('chart').innerHTML = emptyHTML('No data yet — postbacks will show here');
+    return;
+  }
+
+  // Sort ascending
+  const sorted = [...daily].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const maxRev = Math.max(...sorted.map(d => parseFloat(d.revenue) || 0), 1);
+
+  $('chart').innerHTML = sorted.map(d => {
+    const rev = parseFloat(d.revenue) || 0;
+    const pct = Math.max((rev / maxRev) * 100, 2);
+    return `
+      <div class="bar-group">
+        <div class="bar-value">${fmt(rev)}</div>
+        <div class="bar" style="height: ${pct}%" title="${shortDate(d.date)}: ${fmt(rev)} | ${num(d.conversions)} leads | ${num(d.calls)} calls"></div>
+        <span class="bar-label">${shortDate(d.date)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderSourceTable(sources) {
+  if (!sources || sources.length === 0) {
+    $('sourceTable').innerHTML = emptyHTML('No source data');
+    return;
+  }
+  $('sourceTable').innerHTML = `<table>
+    <tr><th>Source</th><th class="right">Conversions</th><th class="right">Revenue</th><th class="right">Avg</th></tr>
+    ${sources.map(s => `<tr>
+      <td>${tagHTML(s.source)}</td>
+      <td class="right mono">${num(s.conversions)}</td>
+      <td class="right mono">${fmt(s.revenue)}</td>
+      <td class="right mono">${fmt(s.avg_payout)}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+function renderStateTable(states) {
+  if (!states || states.length === 0) {
+    $('stateTable').innerHTML = emptyHTML('No state data');
+    return;
+  }
+  $('stateTable').innerHTML = `<table>
+    <tr><th>State</th><th class="right">Events</th><th class="right">Revenue</th><th class="right">Avg</th></tr>
+    ${states.map(s => `<tr>
+      <td><strong>${s.state}</strong></td>
+      <td class="right mono">${num(s.events)}</td>
+      <td class="right mono">${fmt(s.revenue)}</td>
+      <td class="right mono">${fmt(s.avg_payout)}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+function renderCampaignTable(campaigns) {
+  if (!campaigns || campaigns.length === 0) {
+    $('campaignTable').innerHTML = emptyHTML('No campaign data');
+    return;
+  }
+  $('campaignTable').innerHTML = `<table>
+    <tr><th>Campaign</th><th class="right">Leads</th><th class="right">Revenue</th><th class="right">RPL</th></tr>
+    ${campaigns.map(c => `<tr>
+      <td class="mono" style="max-width:160px;overflow:hidden;text-overflow:ellipsis">${c.campaign_id}</td>
+      <td class="right mono">${num(c.leads)}</td>
+      <td class="right mono">${fmt(c.revenue)}</td>
+      <td class="right mono">${fmt(c.rpl)}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+function renderActivity(items) {
+  if (!items || items.length === 0) {
+    $('activityFeed').innerHTML = emptyHTML('No recent activity');
+    return;
+  }
+  $('activityFeed').innerHTML = items.map(a => `
+    <div class="activity-item">
+      <div class="activity-dot ${a.event_type || 'unknown'}"></div>
+      <div class="activity-text">
+        ${tagHTML(a.event_type)}
+        ${a.state ? '<strong>' + a.state + '</strong>' : ''}
+        <span class="mono" style="color:var(--muted);font-size:11px">${(a.click_id || '').slice(0, 8)}…</span>
+      </div>
+      <div class="activity-amount">${fmt(a.payout)}</div>
+      <div class="activity-time">${timeAgo(a.created_at)}</div>
+    </div>
+  `).join('');
+}
+
+// Init
+$('daysPicker').addEventListener('change', loadData);
+loadData();
+
+// Auto-refresh every 30s
+autoRefresh = setInterval(loadData, 30000);
+</script>
+</body>
+</html>
