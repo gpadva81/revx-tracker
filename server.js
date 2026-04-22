@@ -1,4 +1,4 @@
-// RevX Tracker - Custom Postback & Click Tracking Server
+// RevX Tracker - Postback, Click & Funnel Tracking Server
 // Hetzner VPS (aos-host-ash-1)
 
 const express = require('express');
@@ -6,10 +6,12 @@ const { Pool } = require('pg');
 const crypto = require('crypto');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
+const http = require('http');
 
 const app = express();
-app.use(express.json());
-app.set('trust proxy', 1); // trust first proxy (caddy/nginx)
+app.use(express.json({ limit: '100kb' }));
+app.set('trust proxy', 1);
 
 // --- CORS: only allow your landing page domains ---
 const ALLOWED_ORIGINS = [
@@ -19,14 +21,12 @@ const ALLOWED_ORIGINS = [
   'https://www.save-on-insurance.com',
   'https://quoteshiftauto.com',
   'https://www.quoteshiftauto.com',
-  // Allow localhost for testing
   'http://localhost:3000',
   'http://localhost:8080',
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (postbacks, curl, server-to-server)
     if (!origin) return callback(null, true);
     if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
     callback(null, false);
@@ -37,8 +37,8 @@ app.use(cors({
 
 // --- Rate limiting ---
 const clickLimiter = rateLimit({
-  windowMs: 60 * 1000,   // 1 minute
-  max: 30,                // 30 clicks per IP per minute
+  windowMs: 60 * 1000,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests' },
@@ -46,7 +46,15 @@ const clickLimiter = rateLimit({
 
 const postbackLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 120,               // postbacks come in bursts from SmartFinancial
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests' },
+});
+
+const eventLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests' },
@@ -63,6 +71,7 @@ const pool = new Pool({
 async function initDB() {
   const client = await pool.connect();
   try {
+    // Core tables
     await client.query(`
       CREATE TABLE IF NOT EXISTS clicks (
         click_id VARCHAR(36) PRIMARY KEY,
@@ -93,13 +102,66 @@ async function initDB() {
         raw_params JSONB,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+    `);
+
+    // Add visitor_id column to clicks if missing (backward compat)
+    await client.query(`
+      ALTER TABLE clicks ADD COLUMN IF NOT EXISTS visitor_id VARCHAR(36);
+    `);
+
+    // Funnel / visitor tables
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS visitors (
+        visitor_id VARCHAR(36) PRIMARY KEY,
+        first_seen TIMESTAMPTZ DEFAULT NOW(),
+        last_seen TIMESTAMPTZ DEFAULT NOW(),
+        device VARCHAR(50),
+        browser VARCHAR(100),
+        os VARCHAR(100),
+        ip_address VARCHAR(45),
+        country VARCHAR(100),
+        region VARCHAR(100),
+        city VARCHAR(100),
+        raw_ua TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS page_events (
+        id SERIAL PRIMARY KEY,
+        visitor_id VARCHAR(36) REFERENCES visitors(visitor_id) ON DELETE CASCADE,
+        click_id VARCHAR(36),
+        event_type VARCHAR(50),
+        page_url VARCHAR(1000),
+        referrer TEXT,
+        metadata JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS funnel_steps (
+        id SERIAL PRIMARY KEY,
+        visitor_id VARCHAR(36) REFERENCES visitors(visitor_id) ON DELETE CASCADE,
+        click_id VARCHAR(36),
+        step_name VARCHAR(50),
+        step_url VARCHAR(1000),
+        entered_at TIMESTAMPTZ DEFAULT NOW(),
+        exited_at TIMESTAMPTZ,
+        time_spent_ms INTEGER
+      );
 
       CREATE INDEX IF NOT EXISTS idx_clicks_created ON clicks(created_at);
       CREATE INDEX IF NOT EXISTS idx_clicks_source ON clicks(source);
+      CREATE INDEX IF NOT EXISTS idx_clicks_visitor ON clicks(visitor_id);
       CREATE INDEX IF NOT EXISTS idx_conversions_click_id ON conversions(click_id);
       CREATE INDEX IF NOT EXISTS idx_conversions_created ON conversions(created_at);
       CREATE INDEX IF NOT EXISTS idx_conversions_event_type ON conversions(event_type);
+      CREATE INDEX IF NOT EXISTS idx_visitors_last_seen ON visitors(last_seen);
+      CREATE INDEX IF NOT EXISTS idx_page_events_visitor ON page_events(visitor_id);
+      CREATE INDEX IF NOT EXISTS idx_page_events_created ON page_events(created_at);
+      CREATE INDEX IF NOT EXISTS idx_page_events_type ON page_events(event_type);
+      CREATE INDEX IF NOT EXISTS idx_funnel_steps_visitor ON funnel_steps(visitor_id);
+      CREATE INDEX IF NOT EXISTS idx_funnel_steps_step ON funnel_steps(step_name);
+      CREATE INDEX IF NOT EXISTS idx_funnel_steps_entered ON funnel_steps(entered_at);
     `);
+
     console.log('[DB] Tables initialized');
   } finally {
     client.release();
@@ -122,19 +184,83 @@ function sanitizePayout(val) {
   return Math.round(num * 100) / 100;
 }
 
+function isValidUUID(str) {
+  return typeof str === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
+function parseUserAgent(ua) {
+  if (!ua) return { device: 'unknown', browser: 'unknown', os: 'unknown' };
+
+  const device = /Mobile|Android(?!.*Tablet)|iPhone|iPod/i.test(ua) ? 'mobile'
+    : /iPad|Android.*Tablet|Tablet/i.test(ua) ? 'tablet'
+    : 'desktop';
+
+  let browser = 'unknown';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/OPR\/|Opera\//i.test(ua)) browser = 'Opera';
+  else if (/SamsungBrowser/i.test(ua)) browser = 'Samsung';
+  else if (/Chrome\/\d/i.test(ua) && !/Chromium/i.test(ua)) browser = 'Chrome';
+  else if (/Firefox\/\d/i.test(ua)) browser = 'Firefox';
+  else if (/Safari\/\d/i.test(ua) && !/Chrome/i.test(ua)) browser = 'Safari';
+  else if (/MSIE|Trident/i.test(ua)) browser = 'IE';
+
+  let os = 'unknown';
+  if (/Windows NT/i.test(ua)) os = 'Windows';
+  else if (/iPhone|iPod/i.test(ua)) os = 'iOS';
+  else if (/iPad/i.test(ua)) os = 'iPadOS';
+  else if (/Mac OS X/i.test(ua)) os = 'macOS';
+  else if (/Android/i.test(ua)) os = 'Android';
+  else if (/CrOS/i.test(ua)) os = 'ChromeOS';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+
+  return { device, browser, os };
+}
+
+const BOT_PATTERN = /bot|crawler|spider|crawl|Googlebot|bingbot|Slurp|DuckDuck|Yahoo!|Baidu|yandex|facebookexternalhit|Twitterbot|LinkedInBot|curl|wget|python-requests|python\/|java\/|Go-http|okhttp|axios|libwww|HeadlessChrome|PhantomJS|Selenium|puppeteer|playwright|prerender|SiteChecker|AhrefsBot|MJ12bot|DotBot|SemrushBot|rogerbot/i;
+
+function isBot(ua) {
+  return BOT_PATTERN.test(ua || '');
+}
+
+function resolveGeo(ip, visitorId) {
+  if (!ip) return;
+  if (ip === '::1' || ip === '127.0.0.1') return;
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(ip)) return;
+
+  const reqUrl = `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,regionName,city`;
+  http.get(reqUrl, (res) => {
+    let raw = '';
+    res.on('data', chunk => raw += chunk);
+    res.on('end', () => {
+      try {
+        const data = JSON.parse(raw);
+        if (data.status === 'success') {
+          pool.query(
+            'UPDATE visitors SET country=$1, region=$2, city=$3 WHERE visitor_id=$4',
+            [data.country || null, data.regionName || null, data.city || null, visitorId]
+          ).catch(() => {});
+        }
+      } catch (e) {}
+    });
+  }).on('error', () => {});
+}
+
 // --- Route: Register a click (called by tracker.js via POST) ---
 app.post('/click', clickLimiter, async (req, res) => {
   try {
     const clickId = generateClickId();
     const {
       source, gclid, fbclid, campaign_id, adgroup_id,
-      keyword, landing_page, offer_url
+      keyword, landing_page, offer_url, visitor_id
     } = req.body;
+
+    const cleanVisitorId = visitor_id && isValidUUID(visitor_id) ? visitor_id : null;
 
     await pool.query(
       `INSERT INTO clicks
-        (click_id, source, gclid, fbclid, campaign_id, adgroup_id, keyword, landing_page, offer_url, ip_address, user_agent, referer)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        (click_id, source, gclid, fbclid, campaign_id, adgroup_id, keyword, landing_page, offer_url, ip_address, user_agent, referer, visitor_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         clickId,
         sanitizeString(source, 50) || 'unknown',
@@ -148,10 +274,11 @@ app.post('/click', clickLimiter, async (req, res) => {
         req.ip,
         sanitizeString(req.headers['user-agent'], 1000),
         sanitizeString(req.headers['referer'], 1000),
+        cleanVisitorId,
       ]
     );
 
-    console.log(`[CLICK] ${clickId} src=${source || 'unknown'} ip=${req.ip}`);
+    console.log(`[CLICK] ${clickId} src=${source || 'unknown'} ip=${req.ip} vid=${cleanVisitorId || 'none'}`);
     res.json({ click_id: clickId });
   } catch (err) {
     console.error('[CLICK] Error:', err.message);
@@ -160,7 +287,6 @@ app.post('/click', clickLimiter, async (req, res) => {
 });
 
 // --- Route: Postback from SmartFinancial ---
-// URL: https://track.revxglobal.com/postback?tid={tid}&payout={payout}&uid={uid}&state={state}&insured={insured}&own_home={own_home}&multi_vehicle={multi_vehicle}&event_type={event_type}
 app.get('/postback', postbackLimiter, async (req, res) => {
   try {
     const { tid, payout, uid, state, insured, own_home, multi_vehicle, event_type } = req.query;
@@ -173,7 +299,6 @@ app.get('/postback', postbackLimiter, async (req, res) => {
     const rawParams = JSON.stringify(req.query);
     const cleanPayout = sanitizePayout(payout);
 
-    // Try to insert the conversion
     try {
       await pool.query(
         `INSERT INTO conversions
@@ -193,8 +318,6 @@ app.get('/postback', postbackLimiter, async (req, res) => {
       );
     } catch (fkErr) {
       if (fkErr.code === '23503') {
-        // FK violation: click_id not in clicks table
-        // Create a placeholder click so we don't lose conversion data
         await pool.query(
           `INSERT INTO clicks (click_id, source) VALUES ($1, 'postback_only') ON CONFLICT DO NOTHING`,
           [tid]
@@ -229,155 +352,122 @@ app.get('/postback', postbackLimiter, async (req, res) => {
   }
 });
 
-// --- Route: Revenue Report (parameterized queries) ---
-app.get('/api/report', async (req, res) => {
+// --- Route: Funnel Event Ingestion (public, called by tracker.js) ---
+// POST /event — receives visitor events, step info, pageviews, scroll, etc.
+app.post('/event', eventLimiter, async (req, res) => {
   try {
-    const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 365);
-    const interval = `${days} days`;
+    const { visitor_id, click_id, step, step_url, events } = req.body;
 
-    const [dailyReport, sourceReport, stateReport, campaignReport, summary] = await Promise.all([
-      // Daily breakdown
-      pool.query(
-        `SELECT
-          DATE(c2.created_at) as date,
-          COUNT(DISTINCT c2.click_id) as conversions,
-          COUNT(c2.id) as total_events,
-          COALESCE(SUM(c2.payout), 0) as revenue,
-          COUNT(DISTINCT CASE WHEN c2.event_type = 'call' THEN c2.click_id END) as calls
-        FROM conversions c2
-        WHERE c2.created_at >= NOW() - $1::interval
-        GROUP BY DATE(c2.created_at)
-        ORDER BY date DESC`,
-        [interval]
-      ),
+    // Validate visitor_id
+    if (!visitor_id || !isValidUUID(visitor_id)) {
+      return res.status(400).json({ error: 'Invalid visitor_id' });
+    }
 
-      // By source
-      pool.query(
-        `SELECT
-          COALESCE(c.source, 'unknown') as source,
-          COUNT(DISTINCT c2.click_id) as conversions,
-          COALESCE(SUM(c2.payout), 0) as revenue,
-          ROUND(COALESCE(AVG(c2.payout), 0), 2) as avg_payout
-        FROM conversions c2
-        LEFT JOIN clicks c ON c.click_id = c2.click_id
-        WHERE c2.created_at >= NOW() - $1::interval
-        GROUP BY c.source`,
-        [interval]
-      ),
+    // Bot check
+    const ua = sanitizeString(req.headers['user-agent'], 1000) || '';
+    if (isBot(ua)) {
+      return res.status(204).send();
+    }
 
-      // By state (top 20)
-      pool.query(
-        `SELECT
-          state,
-          COUNT(*) as events,
-          COALESCE(SUM(payout), 0) as revenue,
-          ROUND(COALESCE(AVG(payout), 0), 2) as avg_payout
-        FROM conversions
-        WHERE created_at >= NOW() - $1::interval
-          AND state IS NOT NULL AND state != ''
-        GROUP BY state
-        ORDER BY revenue DESC
-        LIMIT 20`,
-        [interval]
-      ),
+    const { device, browser, os } = parseUserAgent(ua);
+    const ip = req.ip;
+    const cleanClickId = click_id && isValidUUID(click_id) ? click_id : null;
 
-      // RPL by campaign
-      pool.query(
-        `SELECT
-          COALESCE(c.campaign_id, 'unknown') as campaign_id,
-          COUNT(DISTINCT c2.click_id) as leads,
-          COALESCE(SUM(c2.payout), 0) as revenue,
-          ROUND(COALESCE(SUM(c2.payout), 0) / NULLIF(COUNT(DISTINCT c2.click_id), 0), 2) as rpl
-        FROM conversions c2
-        LEFT JOIN clicks c ON c.click_id = c2.click_id
-        WHERE c2.created_at >= NOW() - $1::interval
-          AND c.campaign_id IS NOT NULL
-        GROUP BY c.campaign_id
-        ORDER BY revenue DESC`,
-        [interval]
-      ),
-
-      // Overall summary
-      pool.query(
-        `SELECT
-          COUNT(DISTINCT click_id) as total_clicks,
-          (SELECT COUNT(*) FROM conversions WHERE created_at >= NOW() - $1::interval) as total_events,
-          COALESCE(SUM(payout), 0) as total_revenue
-        FROM conversions
-        WHERE created_at >= NOW() - $1::interval`,
-        [interval]
-      ),
-    ]);
-
-    res.json({
-      period: `Last ${days} days`,
-      summary: summary.rows[0] || {},
-      daily: dailyReport.rows,
-      by_source: sourceReport.rows,
-      by_state: stateReport.rows,
-      by_campaign: campaignReport.rows,
-    });
-  } catch (err) {
-    console.error('[REPORT] Error:', err.message);
-    res.status(500).json({ error: 'Report failed' });
-  }
-});
-
-// --- Route: Click detail (for debugging) ---
-app.get('/api/click/:clickId', async (req, res) => {
-  try {
-    const { clickId } = req.params;
-    if (!clickId || clickId.length > 36) return res.status(400).json({ error: 'Invalid click ID' });
-
-    const [click, conversions] = await Promise.all([
-      pool.query('SELECT * FROM clicks WHERE click_id = $1', [clickId]),
-      pool.query('SELECT * FROM conversions WHERE click_id = $1 ORDER BY created_at', [clickId]),
-    ]);
-
-    if (click.rows.length === 0) return res.status(404).json({ error: 'Click not found' });
-
-    res.json({
-      click: click.rows[0],
-      conversions: conversions.rows,
-      total_revenue: conversions.rows.reduce((sum, c) => sum + parseFloat(c.payout || 0), 0),
-    });
-  } catch (err) {
-    console.error('[API] Click detail error:', err.message);
-    res.status(500).json({ error: 'Failed' });
-  }
-});
-
-// --- Route: Recent activity feed ---
-app.get('/api/activity', async (req, res) => {
-  try {
-    const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 365);
-    const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
-    const interval = `${days} days`;
-
-    const result = await pool.query(
-      `SELECT c2.click_id, c2.event_type, c2.payout, c2.state, c2.uid, c2.created_at,
-              c.source, c.campaign_id, c.keyword
-       FROM conversions c2
-       LEFT JOIN clicks c ON c.click_id = c2.click_id
-       WHERE c2.created_at >= NOW() - $1::interval
-       ORDER BY c2.created_at DESC
-       LIMIT $2`,
-      [interval, limit]
+    // Upsert visitor — detect if new via xmax trick
+    const upsertResult = await pool.query(
+      `INSERT INTO visitors (visitor_id, device, browser, os, ip_address, raw_ua)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (visitor_id) DO UPDATE
+         SET last_seen = NOW(),
+             ip_address = EXCLUDED.ip_address,
+             raw_ua = EXCLUDED.raw_ua
+       RETURNING (xmax = 0) AS is_new`,
+      [visitor_id, device, browser, os, ip, ua]
     );
+    const isNew = upsertResult.rows[0]?.is_new === true;
+    if (isNew) {
+      // Kick off async geo resolution (no await — don't block response)
+      resolveGeo(ip, visitor_id);
+    }
 
-    res.json(result.rows);
+    // Link visitor to click if not already linked
+    if (cleanClickId) {
+      pool.query(
+        'UPDATE clicks SET visitor_id = $1 WHERE click_id = $2 AND visitor_id IS NULL',
+        [visitor_id, cleanClickId]
+      ).catch(() => {});
+    }
+
+    // Insert funnel step if provided (allow multiple visits, dedup within 30 min)
+    if (step) {
+      const validSteps = ['landing', 'presale', 'offer', 'conversion'];
+      const cleanStep = validSteps.includes(step) ? step : 'landing';
+      const cleanStepUrl = sanitizeString(step_url, 1000);
+
+      await pool.query(
+        `INSERT INTO funnel_steps (visitor_id, click_id, step_name, step_url)
+         SELECT $1, $2, $3, $4
+         WHERE NOT EXISTS (
+           SELECT 1 FROM funnel_steps
+           WHERE visitor_id = $1
+             AND step_name = $3
+             AND entered_at > NOW() - INTERVAL '30 minutes'
+         )`,
+        [visitor_id, cleanClickId, cleanStep, cleanStepUrl]
+      );
+    }
+
+    // Insert page events (max 50 per request to prevent abuse)
+    if (Array.isArray(events) && events.length > 0) {
+      const batch = events.slice(0, 50);
+      for (const ev of batch) {
+        if (!ev || !ev.type) continue;
+
+        const evType = sanitizeString(ev.type, 50);
+        const evUrl = sanitizeString(ev.page_url, 1000);
+        const evRef = sanitizeString(ev.referrer, 1000);
+        const evMeta = ev.metadata && typeof ev.metadata === 'object'
+          ? JSON.stringify(ev.metadata)
+          : null;
+        let evTs = new Date().toISOString();
+        if (ev.timestamp) {
+          try { evTs = new Date(ev.timestamp).toISOString(); } catch (e) {}
+        }
+
+        // Update funnel step time_spent when we get a time_on_page event
+        if (evType === 'time_on_page' && ev.metadata?.duration_ms > 0) {
+          const durationMs = Math.min(Math.round(ev.metadata.duration_ms), 3600000); // cap at 1h
+          pool.query(
+            `UPDATE funnel_steps
+             SET time_spent_ms = $1, exited_at = NOW()
+             WHERE id = (
+               SELECT id FROM funnel_steps
+               WHERE visitor_id = $2 AND exited_at IS NULL
+               ORDER BY entered_at DESC LIMIT 1
+             )`,
+            [durationMs, visitor_id]
+          ).catch(() => {});
+        }
+
+        await pool.query(
+          `INSERT INTO page_events (visitor_id, click_id, event_type, page_url, referrer, metadata, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [visitor_id, cleanClickId, evType, evUrl, evRef, evMeta, evTs]
+        );
+      }
+    }
+
+    res.status(204).send();
   } catch (err) {
-    console.error('[API] Activity error:', err.message);
+    console.error('[EVENT] Error:', err.message);
     res.status(500).json({ error: 'Failed' });
   }
 });
 
-// --- Route: Dashboard (password protected) ---
+// --- Dashboard Auth ---
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'Roas2026!';
 
-// Auth check middleware for dashboard routes
 function requireAuth(req, res, next) {
-  // Check for session cookie
   const cookie = req.headers.cookie || '';
   const match = cookie.match(/revx_auth=([^;]+)/);
   if (match && match[1] === Buffer.from(DASHBOARD_PASSWORD).toString('base64')) {
@@ -437,7 +527,7 @@ app.get('/', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
 
-// Protect API routes too (except postback and click which are public)
+// Protect /api/* routes (except postback and click which are public)
 app.use('/api', (req, res, next) => {
   const cookie = req.headers.cookie || '';
   const match = cookie.match(/revx_auth=([^;]+)/);
@@ -447,8 +537,353 @@ app.use('/api', (req, res, next) => {
   res.status(401).json({ error: 'Unauthorized' });
 });
 
+// --- Route: Revenue Report ---
+app.get('/api/report', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 365);
+    const interval = `${days} days`;
+
+    const [dailyReport, sourceReport, stateReport, campaignReport, summary, visitorSummary] = await Promise.all([
+      pool.query(
+        `SELECT
+          DATE(c2.created_at) as date,
+          COUNT(DISTINCT c2.click_id) as conversions,
+          COUNT(c2.id) as total_events,
+          COALESCE(SUM(c2.payout), 0) as revenue,
+          COUNT(DISTINCT CASE WHEN c2.event_type = 'call' THEN c2.click_id END) as calls
+        FROM conversions c2
+        WHERE c2.created_at >= NOW() - $1::interval
+        GROUP BY DATE(c2.created_at)
+        ORDER BY date DESC`,
+        [interval]
+      ),
+
+      pool.query(
+        `SELECT
+          COALESCE(c.source, 'unknown') as source,
+          COUNT(DISTINCT c2.click_id) as conversions,
+          COALESCE(SUM(c2.payout), 0) as revenue,
+          ROUND(COALESCE(AVG(c2.payout), 0), 2) as avg_payout
+        FROM conversions c2
+        LEFT JOIN clicks c ON c.click_id = c2.click_id
+        WHERE c2.created_at >= NOW() - $1::interval
+        GROUP BY c.source`,
+        [interval]
+      ),
+
+      pool.query(
+        `SELECT
+          state,
+          COUNT(*) as events,
+          COALESCE(SUM(payout), 0) as revenue,
+          ROUND(COALESCE(AVG(payout), 0), 2) as avg_payout
+        FROM conversions
+        WHERE created_at >= NOW() - $1::interval
+          AND state IS NOT NULL AND state != ''
+        GROUP BY state
+        ORDER BY revenue DESC
+        LIMIT 20`,
+        [interval]
+      ),
+
+      pool.query(
+        `SELECT
+          COALESCE(c.campaign_id, 'unknown') as campaign_id,
+          COUNT(DISTINCT c2.click_id) as leads,
+          COALESCE(SUM(c2.payout), 0) as revenue,
+          ROUND(COALESCE(SUM(c2.payout), 0) / NULLIF(COUNT(DISTINCT c2.click_id), 0), 2) as rpl
+        FROM conversions c2
+        LEFT JOIN clicks c ON c.click_id = c2.click_id
+        WHERE c2.created_at >= NOW() - $1::interval
+          AND c.campaign_id IS NOT NULL
+        GROUP BY c.campaign_id
+        ORDER BY revenue DESC`,
+        [interval]
+      ),
+
+      pool.query(
+        `SELECT
+          COUNT(DISTINCT click_id) as total_clicks,
+          (SELECT COUNT(*) FROM conversions WHERE created_at >= NOW() - $1::interval) as total_events,
+          COALESCE(SUM(payout), 0) as total_revenue
+        FROM conversions
+        WHERE created_at >= NOW() - $1::interval`,
+        [interval]
+      ),
+
+      // Visitor counts & funnel conversion rate
+      pool.query(
+        `SELECT
+          COUNT(DISTINCT v.visitor_id) as total_visitors,
+          COUNT(DISTINCT CASE WHEN fs.step_name = 'conversion' THEN v.visitor_id END) as converted_visitors
+        FROM visitors v
+        LEFT JOIN funnel_steps fs ON fs.visitor_id = v.visitor_id
+          AND fs.entered_at >= NOW() - $1::interval
+        WHERE v.last_seen >= NOW() - $1::interval`,
+        [interval]
+      ),
+    ]);
+
+    res.json({
+      period: `Last ${days} days`,
+      summary: {
+        ...summary.rows[0] || {},
+        total_visitors: visitorSummary.rows[0]?.total_visitors || 0,
+        converted_visitors: visitorSummary.rows[0]?.converted_visitors || 0,
+      },
+      daily: dailyReport.rows,
+      by_source: sourceReport.rows,
+      by_state: stateReport.rows,
+      by_campaign: campaignReport.rows,
+    });
+  } catch (err) {
+    console.error('[REPORT] Error:', err.message);
+    res.status(500).json({ error: 'Report failed' });
+  }
+});
+
+// --- Route: Click detail ---
+app.get('/api/click/:clickId', async (req, res) => {
+  try {
+    const { clickId } = req.params;
+    if (!clickId || clickId.length > 36) return res.status(400).json({ error: 'Invalid click ID' });
+
+    const [click, conversions] = await Promise.all([
+      pool.query('SELECT * FROM clicks WHERE click_id = $1', [clickId]),
+      pool.query('SELECT * FROM conversions WHERE click_id = $1 ORDER BY created_at', [clickId]),
+    ]);
+
+    if (click.rows.length === 0) return res.status(404).json({ error: 'Click not found' });
+
+    res.json({
+      click: click.rows[0],
+      conversions: conversions.rows,
+      total_revenue: conversions.rows.reduce((sum, c) => sum + parseFloat(c.payout || 0), 0),
+    });
+  } catch (err) {
+    console.error('[API] Click detail error:', err.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// --- Route: Recent activity feed ---
+app.get('/api/activity', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 365);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+    const interval = `${days} days`;
+
+    const result = await pool.query(
+      `SELECT c2.click_id, c2.event_type, c2.payout, c2.state, c2.uid, c2.created_at,
+              c.source, c.campaign_id, c.keyword
+       FROM conversions c2
+       LEFT JOIN clicks c ON c.click_id = c2.click_id
+       WHERE c2.created_at >= NOW() - $1::interval
+       ORDER BY c2.created_at DESC
+       LIMIT $2`,
+      [interval, limit]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[API] Activity error:', err.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// --- Route: Recent Visitors List ---
+app.get('/api/visitors', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 365);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 100);
+    const interval = `${days} days`;
+
+    const result = await pool.query(
+      `SELECT
+        v.visitor_id,
+        v.first_seen,
+        v.last_seen,
+        v.device,
+        v.browser,
+        v.os,
+        v.country,
+        v.city,
+        COUNT(DISTINCT pe.id) as event_count,
+        (
+          SELECT step_name FROM funnel_steps fs2
+          WHERE fs2.visitor_id = v.visitor_id
+          ORDER BY entered_at DESC LIMIT 1
+        ) as current_step,
+        (
+          SELECT STRING_AGG(DISTINCT step_name, ',' ORDER BY step_name)
+          FROM funnel_steps fs3
+          WHERE fs3.visitor_id = v.visitor_id
+            AND fs3.entered_at >= NOW() - $1::interval
+        ) as steps_visited
+       FROM visitors v
+       LEFT JOIN page_events pe ON pe.visitor_id = v.visitor_id
+         AND pe.created_at >= NOW() - $1::interval
+       WHERE v.last_seen >= NOW() - $1::interval
+       GROUP BY v.visitor_id
+       ORDER BY v.last_seen DESC
+       LIMIT $2`,
+      [interval, limit]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[API] Visitors error:', err.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// --- Route: Visitor Detail (full journey) ---
+app.get('/api/visitor/:visitorId', async (req, res) => {
+  try {
+    const { visitorId } = req.params;
+    if (!isValidUUID(visitorId)) return res.status(400).json({ error: 'Invalid visitor ID' });
+
+    const [visitor, events, steps, clicks, conversions] = await Promise.all([
+      pool.query('SELECT * FROM visitors WHERE visitor_id = $1', [visitorId]),
+      pool.query(
+        `SELECT id, event_type, page_url, referrer, metadata, created_at
+         FROM page_events WHERE visitor_id = $1
+         ORDER BY created_at ASC LIMIT 500`,
+        [visitorId]
+      ),
+      pool.query(
+        `SELECT step_name, step_url, entered_at, exited_at, time_spent_ms
+         FROM funnel_steps WHERE visitor_id = $1
+         ORDER BY entered_at ASC`,
+        [visitorId]
+      ),
+      pool.query(
+        `SELECT click_id, source, campaign_id, keyword, landing_page, created_at
+         FROM clicks WHERE visitor_id = $1
+         ORDER BY created_at ASC`,
+        [visitorId]
+      ),
+      pool.query(
+        `SELECT c2.event_type, c2.payout, c2.state, c2.created_at
+         FROM conversions c2
+         JOIN clicks cl ON cl.click_id = c2.click_id
+         WHERE cl.visitor_id = $1
+         ORDER BY c2.created_at ASC`,
+        [visitorId]
+      ),
+    ]);
+
+    if (visitor.rows.length === 0) return res.status(404).json({ error: 'Visitor not found' });
+
+    res.json({
+      visitor: visitor.rows[0],
+      events: events.rows,
+      funnel_steps: steps.rows,
+      clicks: clicks.rows,
+      conversions: conversions.rows,
+      total_revenue: conversions.rows.reduce((sum, c) => sum + parseFloat(c.payout || 0), 0),
+    });
+  } catch (err) {
+    console.error('[API] Visitor detail error:', err.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// --- Route: Funnel Report ---
+app.get('/api/funnel', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 365);
+    const interval = `${days} days`;
+
+    const [steps, avgTimes] = await Promise.all([
+      pool.query(
+        `SELECT
+          step_name,
+          COUNT(DISTINCT visitor_id) as visitors
+         FROM funnel_steps
+         WHERE entered_at >= NOW() - $1::interval
+         GROUP BY step_name
+         ORDER BY CASE step_name
+           WHEN 'landing' THEN 1
+           WHEN 'presale' THEN 2
+           WHEN 'offer' THEN 3
+           WHEN 'conversion' THEN 4
+           ELSE 5 END`,
+        [interval]
+      ),
+      pool.query(
+        `SELECT
+          fs.step_name,
+          ROUND(AVG(fs.time_spent_ms)) as avg_time_ms
+         FROM funnel_steps fs
+         WHERE fs.entered_at >= NOW() - $1::interval
+           AND fs.time_spent_ms IS NOT NULL
+         GROUP BY fs.step_name`,
+        [interval]
+      ),
+    ]);
+
+    // Merge avg times
+    const avgMap = {};
+    avgTimes.rows.forEach(r => { avgMap[r.step_name] = parseInt(r.avg_time_ms) || null; });
+
+    const rows = steps.rows.map(r => ({
+      step_name: r.step_name,
+      visitors: parseInt(r.visitors) || 0,
+      avg_time_ms: avgMap[r.step_name] || null,
+    }));
+
+    // Calculate drop-off rates
+    const topStep = rows[0];
+    const topCount = topStep ? topStep.visitors : 1;
+    rows.forEach((r, i) => {
+      r.pct_of_top = topCount > 0 ? Math.round((r.visitors / topCount) * 100) : 0;
+      r.dropoff_pct = i > 0 ? Math.round(((rows[i-1].visitors - r.visitors) / Math.max(rows[i-1].visitors, 1)) * 100) : 0;
+    });
+
+    res.json({ period: `Last ${days} days`, steps: rows });
+  } catch (err) {
+    console.error('[API] Funnel error:', err.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// --- Route: Conversion Paths ---
+app.get('/api/paths', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 365);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 50);
+    const interval = `${days} days`;
+
+    const result = await pool.query(
+      `WITH visitor_paths AS (
+         SELECT
+           visitor_id,
+           STRING_AGG(step_name, ' → ' ORDER BY entered_at) as path,
+           COUNT(*) as steps_taken
+         FROM funnel_steps
+         WHERE entered_at >= NOW() - $1::interval
+         GROUP BY visitor_id
+       )
+       SELECT
+         path,
+         COUNT(*) as visitor_count,
+         ROUND(COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) as pct
+       FROM visitor_paths
+       GROUP BY path
+       ORDER BY visitor_count DESC
+       LIMIT $2`,
+      [interval, limit]
+    );
+
+    res.json({ period: `Last ${days} days`, paths: result.rows });
+  } catch (err) {
+    console.error('[API] Paths error:', err.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
 // --- Route: Serve tracker.js ---
-const path = require('path');
 app.get('/tracker.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
   res.setHeader('Cache-Control', 'public, max-age=3600');
