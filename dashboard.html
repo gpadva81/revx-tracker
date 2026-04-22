@@ -405,6 +405,108 @@
     .panels { grid-template-columns: 1fr; }
     .summary { grid-template-columns: repeat(2, 1fr); }
   }
+
+  /* ---- Nav Tabs ---- */
+  .nav-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 32px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .nav-tab {
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+    user-select: none;
+  }
+  .nav-tab:hover { color: var(--text); }
+  .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ---- Campaign Management Styles ---- */
+  .cm-section { margin-bottom: 24px; }
+  .cm-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-danger  { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .btn-ghost   { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+  .weight-bar-wrap { display: flex; gap: 4px; align-items: center; }
+  .weight-bar {
+    height: 6px; border-radius: 3px; background: var(--accent); min-width: 4px;
+    transition: width 0.3s;
+  }
+  .weight-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+  /* Traffic split viz */
+  .split-viz { display: flex; height: 10px; border-radius: 5px; overflow: hidden; gap: 2px; margin-top: 8px; }
+  .split-seg { height: 100%; min-width: 6px; transition: flex 0.3s; }
+  .split-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .split-legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+  .split-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Form inside modals */
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); }
+  .form-group textarea { resize: vertical; min-height: 64px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+  .form-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .modal-error { background: rgba(239,68,68,0.1); color: var(--red); padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; display: none; }
+  .modal-error.show { display: block; }
+
+  /* Campaign detail inline panel */
+  .campaign-detail {
+    background: rgba(99,102,241,0.05);
+    border: 1px solid rgba(99,102,241,0.2);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 8px;
+  }
+  .buyer-assignment-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .buyer-assignment-row:last-child { border-bottom: none; }
+  .brow-name { flex: 1; font-weight: 600; }
+  .brow-weight { width: 60px; }
+  .brow-pct { width: 40px; text-align: right; color: var(--muted); font-size: 11px; }
 </style>
 </head>
 <body>
@@ -425,6 +527,15 @@
   </div>
 </div>
 
+<!-- Nav Tabs -->
+<div class="nav-tabs">
+  <div class="nav-tab active" onclick="switchTab('overview', this)">📊 Overview</div>
+  <div class="nav-tab" onclick="switchTab('campaigns', this)">🎯 Campaigns</div>
+  <div class="nav-tab" onclick="switchTab('buyers', this)">💼 Buyers</div>
+</div>
+
+<!-- ===================== OVERVIEW TAB ===================== -->
+<div id="tab-overview" class="tab-content active">
 <div class="grid">
 
   <!-- Summary Stats -->
@@ -483,6 +594,174 @@
     </div>
   </div>
 
+</div>
+
+</div><!-- /grid -->
+</div><!-- /tab-overview -->
+
+<!-- ===================== CAMPAIGNS TAB ===================== -->
+<div id="tab-campaigns" class="tab-content">
+<div class="grid">
+
+  <!-- Campaign List -->
+  <div class="cm-section">
+    <div class="cm-header">
+      <div class="section-title" style="margin:0">Campaigns</div>
+      <button class="btn btn-primary" onclick="openNewCampaignModal()">+ New Campaign</button>
+    </div>
+    <div class="panel">
+      <div id="campaignList"><div class="loading">Loading campaigns…</div></div>
+    </div>
+  </div>
+
+  <!-- Per-Campaign Buyer Report -->
+  <div class="cm-section" id="campaignReportSection" style="display:none">
+    <div class="cm-header">
+      <div class="section-title" style="margin:0" id="campaignReportTitle">Campaign Report</div>
+      <button class="btn btn-ghost btn-sm" onclick="$('campaignReportSection').style.display='none'">✕ Close</button>
+    </div>
+    <div class="panel">
+      <div id="campaignReportBody"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+</div>
+</div><!-- /tab-campaigns -->
+
+<!-- ===================== BUYERS TAB ===================== -->
+<div id="tab-buyers" class="tab-content">
+<div class="grid">
+
+  <div class="cm-section">
+    <div class="cm-header">
+      <div class="section-title" style="margin:0">Buyers</div>
+      <button class="btn btn-primary" onclick="openNewBuyerModal()">+ New Buyer</button>
+    </div>
+    <div class="panel">
+      <div id="buyerList"><div class="loading">Loading buyers…</div></div>
+    </div>
+  </div>
+
+</div>
+</div><!-- /tab-buyers -->
+
+<!-- ===================== MODALS ===================== -->
+
+<!-- Create/Edit Campaign Modal -->
+<div class="modal-overlay" id="campaignModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="campaignModalTitle">New Campaign</h2>
+      <button class="modal-close" onclick="closeModal('campaignModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-error" id="campaignModalError"></div>
+      <input type="hidden" id="campaignEditId">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Slug *</label>
+          <input type="text" id="campaignSlug" placeholder="sf-meta-10490">
+          <div class="form-hint">Unique identifier. Used in tracker.js REVX_CAMPAIGN.</div>
+        </div>
+        <div class="form-group">
+          <label>Display Name *</label>
+          <input type="text" id="campaignName" placeholder="SF Meta - driverrates.com">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Traffic Source</label>
+          <select id="campaignSource">
+            <option value="">— Select —</option>
+            <option value="google">Google</option>
+            <option value="meta">Meta</option>
+            <option value="youtube">YouTube</option>
+            <option value="direct">Direct</option>
+            <option value="email">Email</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Landing Page</label>
+          <input type="text" id="campaignLanding" placeholder="driverrates.com">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="closeModal('campaignModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveCampaign()">Save Campaign</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create/Edit Buyer Modal -->
+<div class="modal-overlay" id="buyerModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="buyerModalTitle">New Buyer</h2>
+      <button class="modal-close" onclick="closeModal('buyerModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-error" id="buyerModalError"></div>
+      <input type="hidden" id="buyerEditId">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Slug *</label>
+          <input type="text" id="buyerSlug" placeholder="smartfinancial">
+        </div>
+        <div class="form-group">
+          <label>Display Name *</label>
+          <input type="text" id="buyerName" placeholder="SmartFinancial">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Offer URL Template</label>
+        <textarea id="buyerUrlTemplate" placeholder="https://example.com/offer?tid={tid}"></textarea>
+        <div class="form-hint">Use {tid} for click ID placeholder.</div>
+      </div>
+      <div class="form-group">
+        <label>Postback Token (optional)</label>
+        <input type="text" id="buyerPostbackToken" placeholder="secret-token-for-verification">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="closeModal('buyerModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveBuyer()">Save Buyer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Assign Buyer to Campaign Modal -->
+<div class="modal-overlay" id="assignBuyerModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="assignBuyerTitle">Assign Buyer to Campaign</h2>
+      <button class="modal-close" onclick="closeModal('assignBuyerModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-error" id="assignBuyerError"></div>
+      <input type="hidden" id="assignCampaignId">
+      <div class="form-group">
+        <label>Buyer *</label>
+        <select id="assignBuyerSelect"></select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Weight (1–9999)</label>
+          <input type="number" id="assignWeight" value="100" min="1" max="9999">
+          <div class="form-hint">Relative weight for traffic splitting.</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Offer URL Override (optional)</label>
+        <textarea id="assignUrlOverride" placeholder="Leave blank to use buyer's default URL template. Use {tid} for click ID."></textarea>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="closeModal('assignBuyerModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveAssignment()">Assign Buyer</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Visitor Detail Modal -->
@@ -995,6 +1274,409 @@ loadData();
 
 // Auto-refresh every 30s
 autoRefresh = setInterval(loadData, 30000);
+
+// ================================================================
+// ---- Tab Navigation ----
+// ================================================================
+function switchTab(name, el) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  $('tab-' + name).classList.add('active');
+  if (name === 'campaigns') loadCampaigns();
+  if (name === 'buyers') loadBuyers();
+}
+
+// ================================================================
+// ---- Modal Helpers ----
+// ================================================================
+function openModal(id) { $(id).classList.add('open'); }
+function closeModal(id) { $(id).classList.remove('open'); }
+
+document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+// ================================================================
+// ---- Buyer Color Palette ----
+// ================================================================
+const BUYER_COLORS = ['#6366f1','#22c55e','#3b82f6','#f97316','#eab308','#ef4444','#a855f7','#06b6d4'];
+function buyerColor(idx) { return BUYER_COLORS[idx % BUYER_COLORS.length]; }
+
+// ================================================================
+// ---- Buyers API ----
+// ================================================================
+let allBuyers = [];
+
+async function loadBuyers() {
+  try {
+    allBuyers = await fetch(API + '/api/buyers').then(r => r.json());
+    renderBuyers(allBuyers);
+  } catch(err) {
+    $('buyerList').innerHTML = emptyHTML('Failed to load buyers');
+  }
+}
+
+function renderBuyers(buyers) {
+  if (!buyers || buyers.length === 0) {
+    $('buyerList').innerHTML = emptyHTML('No buyers yet — click + New Buyer to add one');
+    return;
+  }
+  $('buyerList').innerHTML = `<table>
+    <tr>
+      <th>Buyer</th>
+      <th>Slug</th>
+      <th class="right">Campaigns</th>
+      <th>Offer URL Template</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+    ${buyers.map((b, i) => `<tr>
+      <td>
+        <span style="display:inline-flex;align-items:center;gap:8px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${buyerColor(i)};flex-shrink:0"></span>
+          <strong>${escapeHTML(b.name)}</strong>
+        </span>
+      </td>
+      <td><span class="mono" style="font-size:12px;color:var(--muted)">${escapeHTML(b.slug)}</span></td>
+      <td class="right mono">${b.campaign_count || 0}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        <span class="mono" style="font-size:11px;color:var(--muted)" title="${escapeHTML(b.offer_url_template||'')}">
+          ${escapeHTML((b.offer_url_template||'').slice(0,60))}${(b.offer_url_template||'').length>60?'…':''}
+        </span>
+      </td>
+      <td><span class="tag ${b.active?'tag-lead':'tag-unknown'}">${b.active?'Active':'Inactive'}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="editBuyer(${b.id})">Edit</button>
+        ${b.active ? `<button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteBuyer(${b.id})">Disable</button>` : ''}
+      </td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+function openNewBuyerModal() {
+  $('buyerEditId').value = '';
+  $('buyerModalTitle').textContent = 'New Buyer';
+  $('buyerSlug').value = '';
+  $('buyerName').value = '';
+  $('buyerUrlTemplate').value = '';
+  $('buyerPostbackToken').value = '';
+  $('buyerModalError').classList.remove('show');
+  openModal('buyerModal');
+}
+
+function editBuyer(id) {
+  const b = allBuyers.find(x => x.id === id);
+  if (!b) return;
+  $('buyerEditId').value = b.id;
+  $('buyerModalTitle').textContent = 'Edit Buyer';
+  $('buyerSlug').value = b.slug;
+  $('buyerName').value = b.name;
+  $('buyerUrlTemplate').value = b.offer_url_template || '';
+  $('buyerPostbackToken').value = b.postback_token || '';
+  $('buyerModalError').classList.remove('show');
+  openModal('buyerModal');
+}
+
+async function saveBuyer() {
+  const id = $('buyerEditId').value;
+  const slug = $('buyerSlug').value.trim();
+  const name = $('buyerName').value.trim();
+  const offer_url_template = $('buyerUrlTemplate').value.trim();
+  const postback_token = $('buyerPostbackToken').value.trim();
+  const errEl = $('buyerModalError');
+
+  if (!slug || !name) { errEl.textContent = 'Slug and name are required'; errEl.classList.add('show'); return; }
+  errEl.classList.remove('show');
+
+  try {
+    const url = id ? API + '/api/buyers/' + id : API + '/api/buyers';
+    const method = id ? 'PUT' : 'POST';
+    const resp = await fetch(url, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, name, offer_url_template, postback_token }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      errEl.textContent = err.error || 'Failed to save';
+      errEl.classList.add('show');
+      return;
+    }
+    closeModal('buyerModal');
+    loadBuyers();
+    // Refresh campaign list if visible
+    if ($('tab-campaigns').classList.contains('active')) loadCampaigns();
+  } catch(err) {
+    errEl.textContent = 'Network error';
+    errEl.classList.add('show');
+  }
+}
+
+async function deleteBuyer(id) {
+  if (!confirm('Disable this buyer? They will be removed from active routing.')) return;
+  await fetch(API + '/api/buyers/' + id, { method: 'DELETE' });
+  loadBuyers();
+}
+
+// ================================================================
+// ---- Campaigns API ----
+// ================================================================
+let allCampaigns = [];
+
+async function loadCampaigns() {
+  try {
+    allCampaigns = await fetch(API + '/api/campaigns?days=30').then(r => r.json());
+    renderCampaigns(allCampaigns);
+  } catch(err) {
+    $('campaignList').innerHTML = emptyHTML('Failed to load campaigns');
+  }
+}
+
+function renderCampaigns(campaigns) {
+  if (!campaigns || campaigns.length === 0) {
+    $('campaignList').innerHTML = emptyHTML('No campaigns yet — click + New Campaign to add one');
+    return;
+  }
+
+  const rows = campaigns.map(c => {
+    const buyers = Array.isArray(c.buyers) ? c.buyers : [];
+    const totalWeight = buyers.filter(b => b.active).reduce((s, b) => s + (b.weight || 100), 0);
+    const stats = c.stats || {};
+
+    // Traffic split viz
+    const splitHTML = buyers.filter(b => b.active).map((b, i) => {
+      const pct = totalWeight > 0 ? Math.round(((b.weight || 100) / totalWeight) * 100) : 0;
+      return `<div class="split-seg" style="flex:${b.weight||100};background:${buyerColor(i)}" title="${escapeHTML(b.buyer_name||b.buyer_slug)}: ${pct}%"></div>`;
+    }).join('');
+
+    const legendHTML = buyers.filter(b => b.active).map((b, i) => {
+      const pct = totalWeight > 0 ? Math.round(((b.weight || 100) / totalWeight) * 100) : 0;
+      return `<span class="split-legend-item"><span class="split-legend-dot" style="background:${buyerColor(i)}"></span>${escapeHTML(b.buyer_name||b.buyer_slug)} ${pct}%</span>`;
+    }).join('');
+
+    const statusTag = c.active
+      ? '<span class="tag tag-lead">Active</span>'
+      : '<span class="tag tag-unknown">Inactive</span>';
+
+    const sourceTag = c.traffic_source ? tagHTML(c.traffic_source) : '<span style="color:var(--muted);font-size:11px">—</span>';
+
+    return `<tr>
+      <td>
+        <div style="font-weight:600">${escapeHTML(c.name)}</div>
+        <div class="mono" style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHTML(c.slug)}</div>
+        ${buyers.length > 0 ? `<div class="split-viz" style="margin-top:6px;max-width:180px">${splitHTML}</div>
+        <div class="split-legend" style="margin-top:4px">${legendHTML}</div>` : '<div style="font-size:11px;color:var(--muted);margin-top:4px">No buyers assigned</div>'}
+      </td>
+      <td>${sourceTag}</td>
+      <td><span style="font-size:12px;color:var(--muted)">${escapeHTML(c.landing_page||'—')}</span></td>
+      <td class="right mono">${num(stats.clicks||0)}</td>
+      <td class="right mono" style="color:var(--green)">${fmt(stats.revenue||0)}</td>
+      <td>${statusTag}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="viewCampaignReport(${c.id}, '${escapeHTML(c.name)}')">📊 Report</button>
+        <button class="btn btn-ghost btn-sm" style="margin-left:4px" onclick="openAssignBuyer(${c.id}, '${escapeHTML(c.name)}')">+ Buyer</button>
+        <button class="btn btn-ghost btn-sm" style="margin-left:4px" onclick="editCampaign(${c.id})">Edit</button>
+        ${c.active ? `<button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteCampaign(${c.id})">Disable</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  $('campaignList').innerHTML = `<table>
+    <tr>
+      <th>Campaign / Traffic Split</th>
+      <th>Source</th>
+      <th>Landing Page</th>
+      <th class="right">Clicks</th>
+      <th class="right">Revenue (30d)</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+    ${rows}
+  </table>`;
+}
+
+function editCampaign(id) {
+  const c = allCampaigns.find(x => x.id === id);
+  if (!c) return;
+  $('campaignEditId').value = c.id;
+  $('campaignModalTitle').textContent = 'Edit Campaign';
+  $('campaignSlug').value = c.slug;
+  $('campaignName').value = c.name;
+  $('campaignSource').value = c.traffic_source || '';
+  $('campaignLanding').value = c.landing_page || '';
+  $('campaignModalError').classList.remove('show');
+  openModal('campaignModal');
+}
+
+function openNewCampaignModal() {
+  $('campaignEditId').value = '';
+  $('campaignModalTitle').textContent = 'New Campaign';
+  $('campaignSlug').value = '';
+  $('campaignName').value = '';
+  $('campaignSource').value = '';
+  $('campaignLanding').value = '';
+  $('campaignModalError').classList.remove('show');
+  openModal('campaignModal');
+}
+
+async function saveCampaign() {
+  const id = $('campaignEditId').value;
+  const slug = $('campaignSlug').value.trim();
+  const name = $('campaignName').value.trim();
+  const traffic_source = $('campaignSource').value;
+  const landing_page = $('campaignLanding').value.trim();
+  const errEl = $('campaignModalError');
+
+  if (!slug || !name) { errEl.textContent = 'Slug and name are required'; errEl.classList.add('show'); return; }
+  errEl.classList.remove('show');
+
+  try {
+    const url = id ? API + '/api/campaigns/' + id : API + '/api/campaigns';
+    const method = id ? 'PUT' : 'POST';
+    const resp = await fetch(url, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, name, traffic_source, landing_page }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      errEl.textContent = err.error || 'Failed to save';
+      errEl.classList.add('show');
+      return;
+    }
+    closeModal('campaignModal');
+    loadCampaigns();
+  } catch(err) {
+    errEl.textContent = 'Network error';
+    errEl.classList.add('show');
+  }
+}
+
+async function deleteCampaign(id) {
+  if (!confirm('Disable this campaign? Routing will stop for this campaign slug.')) return;
+  await fetch(API + '/api/campaigns/' + id, { method: 'DELETE' });
+  loadCampaigns();
+}
+
+// ================================================================
+// ---- Assign Buyer to Campaign ----
+// ================================================================
+async function openAssignBuyer(campaignId, campaignName) {
+  $('assignCampaignId').value = campaignId;
+  $('assignBuyerTitle').textContent = 'Assign Buyer → ' + escapeHTML(campaignName);
+  $('assignWeight').value = 100;
+  $('assignUrlOverride').value = '';
+  $('assignBuyerError').classList.remove('show');
+
+  // Load buyers into select
+  if (allBuyers.length === 0) await loadBuyers();
+  $('assignBuyerSelect').innerHTML = allBuyers
+    .filter(b => b.active)
+    .map(b => `<option value="${b.id}">${escapeHTML(b.name)} (${escapeHTML(b.slug)})</option>`)
+    .join('');
+
+  openModal('assignBuyerModal');
+}
+
+async function saveAssignment() {
+  const campaign_id = $('assignCampaignId').value;
+  const buyer_id = $('assignBuyerSelect').value;
+  const weight = $('assignWeight').value;
+  const offer_url_override = $('assignUrlOverride').value.trim();
+  const errEl = $('assignBuyerError');
+
+  if (!buyer_id) { errEl.textContent = 'Select a buyer'; errEl.classList.add('show'); return; }
+  errEl.classList.remove('show');
+
+  try {
+    const resp = await fetch(API + '/api/campaigns/' + campaign_id + '/buyers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ buyer_id: parseInt(buyer_id), weight: parseInt(weight) || 100, offer_url_override: offer_url_override || null }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      errEl.textContent = err.error || 'Failed';
+      errEl.classList.add('show');
+      return;
+    }
+    closeModal('assignBuyerModal');
+    loadCampaigns();
+  } catch(err) {
+    errEl.textContent = 'Network error';
+    errEl.classList.add('show');
+  }
+}
+
+async function removeCampaignBuyer(campaignId, buyerId) {
+  if (!confirm('Remove this buyer from the campaign?')) return;
+  await fetch(API + '/api/campaigns/' + campaignId + '/buyers/' + buyerId, { method: 'DELETE' });
+  loadCampaigns();
+}
+
+// ================================================================
+// ---- Per-Campaign Report ----
+// ================================================================
+async function viewCampaignReport(campaignId, campaignName) {
+  const section = $('campaignReportSection');
+  const body = $('campaignReportBody');
+  $('campaignReportTitle').textContent = '📊 ' + campaignName + ' — Buyer Performance';
+  section.style.display = 'block';
+  body.innerHTML = '<div class="loading">Loading report…</div>';
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const days = $('daysPicker').value || 7;
+  try {
+    const data = await fetch(API + '/api/campaigns/' + campaignId + '/report?days=' + days).then(r => r.json());
+    const buyers = data.buyers || [];
+
+    if (buyers.length === 0) {
+      body.innerHTML = emptyHTML('No data for this campaign in the selected period');
+      return;
+    }
+
+    const maxRev = Math.max(...buyers.map(b => parseFloat(b.revenue) || 0), 1);
+
+    body.innerHTML = `
+      <p style="font-size:12px;color:var(--muted);padding:12px 16px 0">${data.period}</p>
+      <table>
+        <tr>
+          <th>Buyer</th>
+          <th class="right">Clicks</th>
+          <th class="right">Conversions</th>
+          <th class="right">Revenue</th>
+          <th class="right">RPL</th>
+          <th>Share</th>
+        </tr>
+        ${buyers.map((b, i) => {
+          const revPct = Math.round(((parseFloat(b.revenue)||0) / maxRev) * 100);
+          return `<tr>
+            <td>
+              <span style="display:inline-flex;align-items:center;gap:8px">
+                <span style="width:8px;height:8px;border-radius:50%;background:${buyerColor(i)};flex-shrink:0"></span>
+                <strong>${escapeHTML(b.buyer_name || b.buyer_slug || '—')}</strong>
+              </span>
+            </td>
+            <td class="right mono">${num(b.clicks)}</td>
+            <td class="right mono">${num(b.conversions)}</td>
+            <td class="right mono" style="color:var(--green)">${fmt(b.revenue)}</td>
+            <td class="right mono">${fmt(b.rpl)}</td>
+            <td style="min-width:120px">
+              <div style="height:6px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden">
+                <div style="height:100%;width:${revPct}%;background:${buyerColor(i)};border-radius:3px"></div>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+      </table>
+    `;
+  } catch(err) {
+    body.innerHTML = emptyHTML('Failed to load report');
+  }
+}
+
+// (Campaign management JS complete — no duplicate init needed)
 </script>
 </body>
 </html>

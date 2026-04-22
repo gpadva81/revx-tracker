@@ -12,11 +12,15 @@
 
   var TRACKER_URL = 'https://track.activefunnel.ai';
   var SOURCE = window.REVX_SOURCE || 'unknown';
+  var CAMPAIGN = window.REVX_CAMPAIGN || '';
 
   // Click ID starts null — set once server responds
   var clickId = null;
   var clickReady = false;
   var pendingClicks = [];
+
+  // Offer URL returned by server for campaign mode (replaces hardcoded offer links)
+  var serverOfferUrl = null;
 
   // Visitor ID — persisted in cookie
   var visitorId = null;
@@ -200,6 +204,7 @@
   function registerClick() {
     var payload = {
       source: SOURCE,
+      campaign: CAMPAIGN || '',
       gclid: gclid || '',
       fbclid: fbclid || '',
       campaign_id: campaignId || '',
@@ -217,6 +222,12 @@
           clickId = data.click_id;
           clickReady = true;
 
+          // Store server-provided offer URL (campaign mode)
+          if (data.offer_url) {
+            serverOfferUrl = data.offer_url;
+            try { sessionStorage.setItem('revx_offer_url', serverOfferUrl); } catch(e) {}
+          }
+
           try {
             sessionStorage.setItem('revx_click_id', clickId);
             sessionStorage.setItem('revx_gclid', gclid || '');
@@ -226,7 +237,7 @@
           pendingClicks.forEach(function(fn) { fn(clickId); });
           pendingClicks = [];
 
-          console.log('[RevX] Click registered: ' + clickId);
+          console.log('[RevX] Click registered: ' + clickId + (serverOfferUrl ? ' (offer routed)' : ''));
         }
       })
       .catch(function(err) {
@@ -258,9 +269,12 @@
   }
 
   // --- Navigate to tracked offer ---
+  // In campaign mode, serverOfferUrl is pre-built by the server (has tid baked in).
+  // In legacy mode (no campaign), buildTrackedUrl appends tid + sub params.
   function goToOffer(href, cid) {
-    sendEvent('cta_click', { destination: href });
-    window.location.href = buildTrackedUrl(href, cid);
+    var destination = serverOfferUrl || buildTrackedUrl(href, cid);
+    sendEvent('cta_click', { destination: destination });
+    window.location.href = destination;
   }
 
   // --- Intercept outbound clicks ---
@@ -400,13 +414,17 @@
     // Get or create persistent visitor ID
     visitorId = getOrCreateVisitorId();
 
-    // Restore click ID from session storage if available
+    // Restore click ID + offer URL from session storage if available
     try {
       var existingId = sessionStorage.getItem('revx_click_id');
       if (existingId) {
         clickId = existingId;
         clickReady = true;
         console.log('[RevX] Restored click ID from session: ' + clickId);
+      }
+      var existingOffer = sessionStorage.getItem('revx_offer_url');
+      if (existingOffer) {
+        serverOfferUrl = existingOffer;
       }
     } catch(e) {}
 
