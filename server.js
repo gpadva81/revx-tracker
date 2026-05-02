@@ -11,6 +11,7 @@ const http = require('http');
 
 const app = express();
 app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: false }));
 app.set('trust proxy', 1);
 
 // --- CORS: only allow your landing page domains ---
@@ -429,7 +430,9 @@ app.post('/click', clickLimiter, async (req, res) => {
 // --- Route: Postback (supports /postback and /postback/:campaignSlug) ---
 async function handlePostback(req, res) {
   try {
-    const { tid, payout, uid, state, insured, own_home, multi_vehicle, event_type } = req.query;
+    // Accept params from query string (GET) or body (POST) — merges both, query takes priority
+    const params = { ...req.body, ...req.query };
+    const { tid, payout, uid, state, insured, own_home, multi_vehicle, event_type } = params;
     const routeCampaignSlug = req.params.campaignSlug
       ? sanitizeString(req.params.campaignSlug, 50)
       : null;
@@ -503,8 +506,8 @@ async function handlePostback(req, res) {
   }
 }
 
-app.get('/postback', postbackLimiter, handlePostback);
-app.get('/postback/:campaignSlug', postbackLimiter, handlePostback);
+app.all('/postback', postbackLimiter, handlePostback);
+app.all('/postback/:campaignSlug', postbackLimiter, handlePostback);
 
 // --- Route: Funnel Event Ingestion (public, called by tracker.js) ---
 // POST /event — receives visitor events, step info, pageviews, scroll, etc.
